@@ -1,0 +1,2 @@
+class SerializerRegistry(object):
+    pass
