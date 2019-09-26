@@ -37,5 +37,15 @@ setuptools.setup(
     include_package_data=True,
     python_requires=">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*",
     install_requires=[],
-    extras_require={"dev": ["pytest", "pytest-cov", "coverage", "mccabe", "flake8-bugbear", "pep8-naming"]},
+    extras_require={
+        "dev": [
+            "pytest",
+            "pytest-cov",
+            "mock",
+            "coverage",
+            "mccabe",
+            "flake8-bugbear",
+            "pep8-naming",
+        ]
+    },
 )
