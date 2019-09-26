@@ -41,6 +41,7 @@ setuptools.setup(
             "pytest-cov",
             "mock",
             "coverage",
+            "flake8",
             "mccabe",
             "flake8-bugbear",
             "pep8-naming",

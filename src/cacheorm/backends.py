@@ -52,9 +52,9 @@ class SimpleBackend(BaseBackend):
         return time.time() + ttl if ttl > 0 else 0
 
     def _randomly_select(self, ratio=0.2):
-        return random.choices(
-            list(self._store.keys()), k=math.ceil(len(self._store) * ratio)
-        )
+        keys = list(self._store.keys())
+        random.shuffle(keys)
+        return [keys[i] for i in range(math.ceil(len(keys) * ratio))]
 
     def _prune(self):
         if len(self._store) >= self._threshold:
@@ -63,7 +63,7 @@ class SimpleBackend(BaseBackend):
             for key, (expireat, _) in self._store.items():
                 if expireat != 0 and expireat < now:
                     toremove.append(key)
-            toremove = toremove or self._randomly_select()
+            toremove = toremove or self._randomly_select(0.2)
             for key in toremove:
                 self._store.pop(key, None)
 

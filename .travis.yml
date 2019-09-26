@@ -1,6 +1,9 @@
 sudo: false
 language: python
 cache: pip
+services:
+  - redis-server
+  - memcached
 matrix:
   include:
     - python: 3.5
@@ -9,6 +12,7 @@ matrix:
 install:
   - pip install -e ".[dev]"
 script:
+  - flake8 src tests
   - pytest
 after_success:
   - bash <(curl -s https://codecov.io/bash)
