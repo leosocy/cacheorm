@@ -10,7 +10,7 @@ class BaseBackend(object):  # pragma: no cover
     def _normalize_ttl(self, ttl):
         if ttl is None:
             ttl = self.default_ttl
-        return max(ttl, 0)
+        return int(max(ttl, 0))
 
     def set(self, key, value, ttl=None):
         return True
@@ -88,8 +88,49 @@ class SimpleBackend(BaseBackend):
         return self.get(key) is not None
 
 
-class Redis(BaseBackend):
-    pass
+class RedisBackend(BaseBackend):
+    def __init__(
+        self,
+        host="localhost",
+        port=6379,
+        password=None,
+        db=0,
+        default_ttl=600,
+        **kwargs
+    ):
+        super(RedisBackend, self).__init__(default_ttl)
+        try:
+            import redis
+        except ImportError:  # pragma: no cover
+            raise ModuleNotFoundError("no redis module found")
+        self._client = redis.Redis(
+            host=host, port=port, password=password, db=db, **kwargs
+        )
+
+    def _normalize_ttl(self, ttl):
+        ttl = super(RedisBackend, self)._normalize_ttl(ttl)
+        if ttl == 0:
+            ttl = -1
+        return ttl
+
+    def set(self, key, value, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        if ttl == -1:
+            return self._client.set(key, value)
+        else:
+            return self._client.setex(key, ttl, value)
+
+    def get(self, key):
+        value = self._client.get(key)
+        if not value:
+            return None
+        return value.decode()
+
+    def delete(self, key):
+        return self._client.delete(key)
+
+    def has(self, key):
+        return self._client.exists(key)
 
 
 class Memcached(BaseBackend):

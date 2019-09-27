@@ -45,6 +45,8 @@ setuptools.setup(
             "mccabe",
             "flake8-bugbear",
             "pep8-naming",
-        ]
+            "redis>=3.0",
+        ],
+        "redis": ["redis>=3.0"],
     },
 )

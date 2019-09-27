@@ -27,4 +27,3 @@
 - json
 - msgpack
 - pickle
-

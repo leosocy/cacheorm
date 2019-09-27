@@ -1,6 +1,5 @@
 import time
 
-import mock
 from cacheorm.backends import SimpleBackend
 
 
@@ -23,20 +22,20 @@ def test_general_flow_get_set_delete(general_flow_test_backends):
 def test_general_flow_cache_expired(general_flow_test_backends):
     key = "foo"
     value = "foo.test"
-    ttl = 10
+    ttl = 1
     for backend in general_flow_test_backends:
+        # cache 1s, not available after 1s
         backend.set(key, value, ttl=ttl)
         assert backend.has(key)
-        now = time.time()
-        with mock.patch("time.time", return_value=now + ttl):
-            assert backend.get(key) is None
-            assert not backend.has(key)
+        time.sleep(1.1 * ttl)
+        assert backend.get(key) is None
+        assert not backend.has(key)
+        # cache never expires
         backend.set(key, value, ttl=0)
         assert backend.has(key)
-        now = time.time()
-        with mock.patch("time.time", return_value=now + 100):
-            assert value == backend.get(key)
-            assert backend.has(key)
+        time.sleep(1.1 * ttl)
+        assert value == backend.get(key)
+        assert backend.has(key)
 
 
 def test_general_flow_get_set_delete_many(general_flow_test_backends):
@@ -68,11 +67,14 @@ def test_simple_backend_exceeded_threshold():
     assert 2 == len(backend._store)
     assert backend.has("baz")
     # bar expired, be pruned
-    now = time.time()
     backend = SimpleBackend(threshold=2)
     backend.set("foo", "foo.test", ttl=0)
     backend.set("bar", "bar.test", ttl=1)
-    with mock.patch("time.time", return_value=now + 10):
-        backend.set("baz", "baz.test", ttl=0)
-        assert not backend.has("bar")
-        assert backend.has("baz")
+    time.sleep(1.1)
+    backend.set("baz", "baz.test", ttl=0)
+    assert not backend.has("bar")
+    assert backend.has("baz")
+
+
+def test_redis_backend_get_set_delete_many_once_io(redis_backend):
+    pass
