@@ -118,7 +118,7 @@ class RedisBackend(BaseBackend):
         if ttl == -1:
             return self._client.set(key, value)
         else:
-            return self._client.setex(key, ttl, value)
+            return self._client.setex(name=key, value=value, time=ttl)
 
     def get(self, key):
         value = self._client.get(key)
@@ -128,6 +128,21 @@ class RedisBackend(BaseBackend):
 
     def delete(self, key):
         return self._client.delete(key)
+
+    def set_many(self, mapping, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        if ttl == -1:
+            return self._client.mset(mapping)
+        with self._client.pipeline() as pipe:
+            for key, value in mapping.items():
+                pipe.setex(name=key, value=value, time=ttl)
+            return pipe.execute()
+
+    def get_many(self, *keys):
+        return [v.decode() if v else None for v in self._client.mget(keys)]
+
+    def delete_many(self, *keys):
+        return self._client.delete(*keys)
 
     def has(self, key):
         return self._client.exists(key)

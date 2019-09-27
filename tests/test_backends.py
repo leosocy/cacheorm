@@ -1,6 +1,6 @@
-import mock
 import time
 
+import mock
 from cacheorm.backends import SimpleBackend
 
 
@@ -81,15 +81,29 @@ def test_simple_backend_exceeded_threshold():
 
 def test_redis_backend_get_set_delete_many_once_io(redis_backend):
     mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
-    with mock.patch.object(redis_backend, "set", wraps=redis_backend.set) as mock_set:
-        assert redis_backend.set_many(mapping)
-        mock_set.assert_not_called()
-    with mock.patch.object(redis_backend, "get", wraps=redis_backend.get) as mock_get:
+    with mock.patch.object(
+        redis_backend._client,
+        "execute_command",
+        wraps=redis_backend._client.execute_command,
+    ) as mock_execute:
+        # use `MSET` when no ttl, use `Pipeline` when ttl > 0
+        assert redis_backend.set_many(mapping, ttl=0)
+        mock_execute.assert_called_once()
+    with mock.patch.object(
+        redis_backend._client, "pipeline", waraps=redis_backend._client.pipeline
+    ) as mock_pipeline:
+        assert redis_backend.set_many(mapping, ttl=600)
+        mock_pipeline.assert_called_once()
+    with mock.patch.object(
+        redis_backend._client,
+        "execute_command",
+        wraps=redis_backend._client.execute_command,
+    ) as mock_execute:
         rv = redis_backend.get_many(*mapping.keys())
         assert list(mapping.values()) == rv
-        mock_get.assert_not_called()
-    with mock.patch.object(redis_backend, "delete", wraps=redis_backend.delete) as mock_delete:
+        mock_execute.assert_called_once()
+        mock_execute.reset_mock()
         redis_backend.delete_many(*mapping.keys())
-        mock_delete.assert_not_called()
+        mock_execute.assert_called_once()
         for key in mapping:
             assert not redis_backend.has(key)
