@@ -2,6 +2,12 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
+from cacheorm.serializers import (
+    JSONSerializer,
+    MessagePackSerializer,
+    PickleSerializer,
+    SerializerRegistry,
+)
 
 
 @pytest.fixture()
@@ -49,4 +55,22 @@ def general_flow_test_backends(redis_client, memcached_client):
         SimpleBackend(),
         RedisBackend(client=redis_client),
         MemcachedBackend(client=memcached_client),
+    )
+
+
+@pytest.fixture()
+def registry():
+    registry = SerializerRegistry()
+    yield registry
+
+
+@pytest.fixture()
+def serializers(registry):
+    registry.register("json", JSONSerializer())
+    registry.register("msgpack", MessagePackSerializer())
+    registry.register("pickle", PickleSerializer())
+    yield (
+        registry.get_by_name("json"),
+        registry.get_by_name("msgpack"),
+        registry.get_by_name("pickle"),
     )

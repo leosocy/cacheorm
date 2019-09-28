@@ -46,8 +46,10 @@ setuptools.setup(
             "pep8-naming",
             "redis>=3.0",
             "pymemcache",
+            "msgpack<1.0",
+            # "protobuf"
         ],
-        "redis": ["redis>=3.0"],
-        "memcached": ["libmc>=1.3.0"],
+        "backends": ["redis>=3.0", "libmc>=1.3.0"],
+        "serializers": ["msgpack>=0.6,<1.0"],
     },
 )
