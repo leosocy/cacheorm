@@ -1,16 +1,17 @@
 import time
 
 import mock
-from cacheorm.backends import SimpleBackend
+from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 
 
 def test_general_flow_get_set_delete(general_flow_test_backends):
     key = "foo"
     value = "foo.test"
+    year_ttl = 365 * 24 * 60 * 60
     for backend in general_flow_test_backends:
         assert backend.get(key) is None
         assert not backend.has(key)
-        assert backend.set(key, value, ttl=10)
+        assert backend.set(key, value, ttl=year_ttl)
         assert value == backend.get(key)
         assert backend.has(key)
         new_value = "foo.test.new"
@@ -79,25 +80,29 @@ def test_simple_backend_exceeded_threshold():
     assert backend.has("baz")
 
 
-def test_redis_backend_get_set_delete_many_once_io(redis_backend):
+def test_redis_backend_initialization(redis_client_args):
+    redis_backend = RedisBackend(**redis_client_args)
+    key = "test"
+    redis_backend.set(key, 1)
+    assert redis_backend.has(key)
+
+
+def test_redis_backend_get_set_delete_many_once_io(redis_client):
+    redis_backend = RedisBackend(client=redis_client)
     mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
     with mock.patch.object(
-        redis_backend._client,
-        "execute_command",
-        wraps=redis_backend._client.execute_command,
+        redis_client, "execute_command", wraps=redis_client.execute_command
     ) as mock_execute:
         # use `MSET` when no ttl, use `Pipeline` when ttl > 0
         assert redis_backend.set_many(mapping, ttl=0)
         mock_execute.assert_called_once()
     with mock.patch.object(
-        redis_backend._client, "pipeline", waraps=redis_backend._client.pipeline
+        redis_client, "pipeline", waraps=redis_client.pipeline
     ) as mock_pipeline:
         assert redis_backend.set_many(mapping, ttl=600)
         mock_pipeline.assert_called_once()
     with mock.patch.object(
-        redis_backend._client,
-        "execute_command",
-        wraps=redis_backend._client.execute_command,
+        redis_client, "execute_command", wraps=redis_client.execute_command
     ) as mock_execute:
         rv = redis_backend.get_many(*mapping.keys())
         assert list(mapping.values()) == rv
@@ -107,3 +112,33 @@ def test_redis_backend_get_set_delete_many_once_io(redis_backend):
         mock_execute.assert_called_once()
         for key in mapping:
             assert not redis_backend.has(key)
+
+
+def test_memcached_backend_initialization(memcached_client_args):
+    memcached_backend = MemcachedBackend(**memcached_client_args)
+    key = "test"
+    memcached_backend.set(key, 1)
+    assert memcached_backend.has(key)
+
+
+def test_memcached_backend_get_set_delete_many_once_io(memcached_client):
+    memcached_backend = MemcachedBackend(client=memcached_client)
+    mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
+    with mock.patch.object(
+        memcached_client, "set_multi", wraps=memcached_client.set_multi
+    ) as mock_set:
+        assert memcached_backend.set_many(mapping)
+        mock_set.assert_called_once()
+    with mock.patch.object(
+        memcached_client, "get_multi", wraps=memcached_client.get_multi
+    ) as mock_get:
+        rv = memcached_backend.get_many(*mapping.keys())
+        assert list(mapping.values()) == rv
+        mock_get.assert_called_once()
+    with mock.patch.object(
+        memcached_client, "delete_multi", wraps=memcached_client.delete_multi
+    ) as mock_delete:
+        memcached_backend.delete_many(*mapping.keys())
+        mock_delete.assert_called_once()
+        for key in mapping:
+            assert not memcached_backend.has(key)

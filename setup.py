@@ -45,7 +45,9 @@ setuptools.setup(
             "flake8-bugbear",
             "pep8-naming",
             "redis>=3.0",
+            "pymemcache",
         ],
         "redis": ["redis>=3.0"],
+        "memcached": ["libmc>=1.3.0"],
     },
 )

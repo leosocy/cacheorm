@@ -95,30 +95,31 @@ class RedisBackend(BaseBackend):
         port=6379,
         password=None,
         db=0,
+        client=None,
         default_ttl=600,
         **kwargs
     ):
         super(RedisBackend, self).__init__(default_ttl)
-        try:
-            import redis
-        except ImportError:  # pragma: no cover
-            raise ModuleNotFoundError("no redis module found")
-        self._client = redis.Redis(
-            host=host, port=port, password=password, db=db, **kwargs
-        )
+        if client is None:
+            try:
+                import redis
+            except ImportError:
+                raise ModuleNotFoundError("no redis module found")
+            self._client = redis.Redis(
+                host=host, port=port, password=password, db=db, **kwargs
+            )
+        else:
+            self._client = client
 
     def _normalize_ttl(self, ttl):
         ttl = super(RedisBackend, self)._normalize_ttl(ttl)
         if ttl == 0:
-            ttl = -1
+            ttl = None
         return ttl
 
     def set(self, key, value, ttl=None):
         ttl = self._normalize_ttl(ttl)
-        if ttl == -1:
-            return self._client.set(key, value)
-        else:
-            return self._client.setex(name=key, value=value, time=ttl)
+        return self._client.set(key, value, ex=ttl)
 
     def get(self, key):
         value = self._client.get(key)
@@ -131,7 +132,7 @@ class RedisBackend(BaseBackend):
 
     def set_many(self, mapping, ttl=None):
         ttl = self._normalize_ttl(ttl)
-        if ttl == -1:
+        if ttl is None:
             return self._client.mset(mapping)
         with self._client.pipeline() as pipe:
             for key, value in mapping.items():
@@ -148,5 +149,81 @@ class RedisBackend(BaseBackend):
         return self._client.exists(key)
 
 
-class Memcached(BaseBackend):
-    pass
+class MemcachedBackend(BaseBackend):
+    def __init__(self, servers=(("localhost", 11211),), client=None, default_ttl=600):
+        super(MemcachedBackend, self).__init__(default_ttl)
+        if client is None:
+            self._client = MemcachedBackend.import_preferred_mc_lib(servers)
+            if self._client is None:  # pragma: no cover
+                raise ModuleNotFoundError("no memcached module found")
+        else:
+            self._client = client
+
+    def _normalize_ttl(self, ttl):
+        ttl = super(MemcachedBackend, self)._normalize_ttl(ttl)
+        # After 30 days, is treated as a unix timestamp of an exact date.
+        if ttl >= 30 * 24 * 60 * 60:
+            return int(time.time()) + ttl
+        return ttl
+
+    def set(self, key, value, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        return self._client.set(key, value, ttl)
+
+    def get(self, key):
+        value = self._client.get(key)
+        if value is None:
+            return None
+        return value.decode()
+
+    def delete(self, key):
+        return self._client.delete(key)
+
+    def set_many(self, mapping, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        failed_keys = self._client.set_multi(mapping, ttl)
+        return not failed_keys
+
+    def get_many(self, *keys):
+        mapping = self.get_dict(*keys)
+        return [mapping[key] for key in keys]
+
+    def get_dict(self, *keys):
+        mapping = self._client.get_multi(keys)
+        return {key: mapping[key].decode() if key in mapping else None for key in keys}
+
+    def delete_many(self, *keys):
+        return self._client.delete_multi(keys)
+
+    def has(self, key):
+        return self._client.append(key, b"")
+
+    @staticmethod
+    def import_preferred_mc_lib(servers):  # pragma: no cover
+        """
+        ooks into the following packages/modules to find bindings for memcached:
+
+        - ``libmc``
+        - ``pylibmc``
+        - ``pymemcache``
+        """
+        try:
+            import libmc
+        except ImportError:
+            pass
+        else:
+            return libmc.Client(["{}:{}".format(*server) for server in servers])
+
+        try:
+            import pylibmc
+        except ImportError:
+            pass
+        else:
+            return pylibmc.Client(["{}:{}".format(*server) for server in servers])
+
+        try:
+            import pymemcache
+        except ImportError:
+            pass
+        else:
+            return pymemcache.Client(servers[0], default_noreply=False)
