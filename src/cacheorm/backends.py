@@ -105,7 +105,7 @@ class RedisBackend(BaseBackend):
         if client is None:
             try:
                 import redis
-            except ImportError:
+            except ImportError:  # pragma: no cover
                 raise ModuleNotFoundError("no redis module found")
             self._client = redis.Redis(
                 host=host, port=port, password=password, db=db, **kwargs
@@ -149,10 +149,12 @@ class RedisBackend(BaseBackend):
 
 
 class MemcachedBackend(BaseBackend):
+    KEY_MAX_LENGTH = 250
+
     def __init__(self, servers=(("localhost", 11211),), client=None, default_ttl=600):
         super(MemcachedBackend, self).__init__(default_ttl)
         if client is None:
-            self._client = MemcachedBackend.import_preferred_mc_lib(servers)
+            self._client = MemcachedBackend._import_preferred_mc_lib(servers)
             if self._client is None:  # pragma: no cover
                 raise ModuleNotFoundError("no memcached module found")
         else:
@@ -170,34 +172,47 @@ class MemcachedBackend(BaseBackend):
         return self._client.set(key, value, ttl)
 
     def get(self, key):
+        if self._key_invalid(key):
+            return None
         return to_bytes(self._client.get(key))
 
     def delete(self, key):
+        if self._key_invalid(key):
+            return False
         return self._client.delete(key)
 
     def set_many(self, mapping, ttl=None):
         ttl = self._normalize_ttl(ttl)
         failed_keys = self._client.set_multi(mapping, ttl)
-        return not failed_keys
+        # return `True` if success in libmc
+        # return failed_keys list in other libraries.
+        return failed_keys if isinstance(failed_keys, bool) else not failed_keys
 
     def get_many(self, *keys):
         mapping = self.get_dict(*keys)
         return [mapping[key] for key in keys]
 
     def get_dict(self, *keys):
-        mapping = self._client.get_multi(keys)
+        valid_keys, _ = self._filter_valid_keys(*keys)
+        mapping = self._client.get_multi(valid_keys)
         return {key: to_bytes(mapping.get(key, None)) for key in keys}
 
     def delete_many(self, *keys):
-        return self._client.delete_multi(keys)
+        valid_keys, filtered = self._filter_valid_keys(*keys)
+        rv = self._client.delete_multi(valid_keys)
+        if filtered:
+            return False
+        return rv
 
     def has(self, key):
+        if self._key_invalid(key):
+            return False
         return self._client.append(key, b"")
 
     @staticmethod
-    def import_preferred_mc_lib(servers):  # pragma: no cover
+    def _import_preferred_mc_lib(servers):  # pragma: no cover
         """
-        ooks into the following packages/modules to find bindings for memcached:
+        Looks into the following packages/modules to find bindings for memcached:
 
         - ``libmc``
         - ``pylibmc``
@@ -223,3 +238,19 @@ class MemcachedBackend(BaseBackend):
             pass
         else:
             return pymemcache.Client(servers[0], default_noreply=False)
+
+    @staticmethod
+    def _key_invalid(key):
+        if len(key) > MemcachedBackend.KEY_MAX_LENGTH:
+            return True
+
+    @staticmethod
+    def _filter_valid_keys(*keys):
+        rv = []
+        filtered = False
+        for key in keys:
+            if MemcachedBackend._key_invalid(key):
+                filtered = True
+                continue
+            rv.append(key)
+        return rv, filtered

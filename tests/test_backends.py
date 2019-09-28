@@ -1,6 +1,7 @@
 import time
 
 import mock
+import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 from cacheorm.types import to_bytes
 
@@ -9,7 +10,7 @@ def test_general_flow_set_get_delete(general_flow_test_backends):
     import pickle
 
     key = "foo"
-    values = ("foo.test", 1, pickle.dumps({"test": "foo"}))
+    values = ("foo.test", "", 1, pickle.dumps({"test": "foo"}))
     year_ttl = 365 * 24 * 60 * 60
     for value in values:
         for backend in general_flow_test_backends:
@@ -60,7 +61,7 @@ def test_general_flow_set_get_delete_many(general_flow_test_backends):
         assert {k: to_bytes(v) for k, v in mapping.items()} == rv
         values = backend.get_many(*keys, "unknown")
         assert len(mapping) + 1 == len(values)
-        assert values[len(mapping)] is None
+        assert values[-1] is None
         assert backend.delete_many(*keys)
         for k in keys:
             assert not backend.has(k)
@@ -146,3 +147,22 @@ def test_memcached_backend_get_set_delete_many_once_io(memcached_client):
         mock_delete.assert_called_once()
         for key in mapping:
             assert not memcached_backend.has(key)
+
+
+def test_memcached_backend_too_long_key_length(memcached_client):
+    memcached_backend = MemcachedBackend(client=memcached_client)
+    too_long_key = "a" * 251
+    mapping = {"foo": "foo.test", too_long_key: "too_long"}
+    with pytest.raises(Exception):
+        assert memcached_backend.set(too_long_key, "too_long")
+    with pytest.raises(Exception):
+        assert memcached_backend.set_many(mapping)
+    memcached_backend.set("foo", "foo.test")
+    assert memcached_backend.get(too_long_key) is None
+    rv = memcached_backend.get_dict(*mapping.keys())
+    assert rv[too_long_key] is None
+    assert rv["foo"]
+    assert not memcached_backend.has(too_long_key)
+    assert not memcached_backend.delete(too_long_key)
+    assert not memcached_backend.delete_many(*mapping.keys())
+    assert not memcached_backend.has("foo")
