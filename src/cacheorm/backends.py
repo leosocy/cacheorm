@@ -2,6 +2,8 @@ import math
 import random
 import time
 
+from cacheorm.types import to_bytes
+
 
 class BaseBackend(object):  # pragma: no cover
     def __init__(self, default_ttl=600):
@@ -77,7 +79,7 @@ class SimpleBackend(BaseBackend):
         try:
             expireat, value = self._store[key]
             if expireat == 0 or expireat > time.time():
-                return value
+                return to_bytes(value)
         except KeyError:
             return None
 
@@ -122,10 +124,7 @@ class RedisBackend(BaseBackend):
         return self._client.set(key, value, ex=ttl)
 
     def get(self, key):
-        value = self._client.get(key)
-        if not value:
-            return None
-        return value.decode()
+        return to_bytes(self._client.get(key))
 
     def delete(self, key):
         return self._client.delete(key)
@@ -140,7 +139,7 @@ class RedisBackend(BaseBackend):
             return pipe.execute()
 
     def get_many(self, *keys):
-        return [v.decode() if v else None for v in self._client.mget(keys)]
+        return [to_bytes(v) for v in self._client.mget(keys)]
 
     def delete_many(self, *keys):
         return self._client.delete(*keys)
@@ -171,10 +170,7 @@ class MemcachedBackend(BaseBackend):
         return self._client.set(key, value, ttl)
 
     def get(self, key):
-        value = self._client.get(key)
-        if value is None:
-            return None
-        return value.decode()
+        return to_bytes(self._client.get(key))
 
     def delete(self, key):
         return self._client.delete(key)
@@ -190,7 +186,7 @@ class MemcachedBackend(BaseBackend):
 
     def get_dict(self, *keys):
         mapping = self._client.get_multi(keys)
-        return {key: mapping[key].decode() if key in mapping else None for key in keys}
+        return {key: to_bytes(mapping.get(key, None)) for key in keys}
 
     def delete_many(self, *keys):
         return self._client.delete_multi(keys)
