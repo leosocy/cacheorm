@@ -47,9 +47,9 @@ setuptools.setup(
             "redis>=3.0",
             "pymemcache",
             "msgpack<1.0",
-            # "protobuf"
+            "protobuf>=3.9"
         ],
         "backends": ["redis>=3.0", "libmc>=1.3.0"],
-        "serializers": ["msgpack>=0.6,<1.0"],
+        "serializers": ["msgpack>=0.6,<1.0", "protobuf>=3.9"],
     },
 )

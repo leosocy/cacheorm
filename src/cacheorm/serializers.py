@@ -1,7 +1,7 @@
 import threading
 
 
-class BaseSerializer(object):
+class BaseSerializer(object):   # pragma: no cover
     def dumps(self, obj) -> bytes:
         """Serialize ``obj`` to a ``bytes``."""
         raise NotImplementedError
@@ -59,7 +59,7 @@ class MessagePackSerializer(BaseSerializer):
             import msgpack
 
             self._msgpack = msgpack
-        except ImportError:
+        except ImportError: # pragma: no cover
             raise ModuleNotFoundError("no msgpack module found.")
 
     def dumps(self, obj):
@@ -84,13 +84,17 @@ class PickleSerializer(BaseSerializer):
 
 class ProtobufSerializer(BaseSerializer):
     def __init__(self, descriptor):
-        pass
+        self._descriptor = descriptor
 
     def dumps(self, obj):
-        pass
+        if isinstance(obj, self._descriptor):
+            return self._descriptor.SerializeToString(obj)
+        if isinstance(obj, dict):
+            return self._descriptor.SerializeToString(self._descriptor(**obj))
+        raise TypeError("protocol buffer serializer `dumps` only support Dict/Pb object")
 
     def loads(self, s):
-        pass
+        return self._descriptor.FromString(s)
 
 
 registry = SerializerRegistry()
