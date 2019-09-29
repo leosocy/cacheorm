@@ -17,4 +17,4 @@ repos:
     rev: stable
     hooks:
       - id: black
-exclude: ^tests/protos/.*$
+exclude: tests/protos

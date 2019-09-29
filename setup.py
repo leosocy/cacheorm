@@ -45,9 +45,9 @@ setuptools.setup(
             "flake8-bugbear",
             "pep8-naming",
             "redis>=3.0",
-            "pymemcache",
+            "libmc>=1.3.0",
             "msgpack<1.0",
-            "protobuf>=3.9"
+            "protobuf>=3.9",
         ],
         "backends": ["redis>=3.0", "libmc>=1.3.0"],
         "serializers": ["msgpack>=0.6,<1.0", "protobuf>=3.9"],
