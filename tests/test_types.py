@@ -1,5 +1,5 @@
 import pytest
-from cacheorm.types import to_bytes
+from cacheorm.types import Singleton, to_bytes
 
 
 def test_to_bytes():
@@ -13,3 +13,16 @@ def test_to_bytes():
         to_bytes([1])
     with pytest.raises(TypeError):
         to_bytes({"test": 1})
+
+
+def test_singleton():
+    class Test(metaclass=Singleton):
+        __slots__ = ["a"]
+
+        def __init__(self, a):
+            self.a = a
+
+    t1 = Test(1)
+    t2 = Test(2)
+    assert t1 is t2
+    assert t2.a == t1.a
