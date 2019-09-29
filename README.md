@@ -20,12 +20,23 @@
 - `delete_many(*keys)`
 - `has(key)`
 
-## ModelBase
-
 ## Serializer
 
 - json
 - msgpack
 - pickle
+- protobuf
 
 ### Registry
+
+All serializers are registered to a registry singleton.
+Provide `json`, `msgpack`, `pickle` three serializers by default.
+
+You can register your own serializer,
+such as a Protobuf serializer that registers a `Person` message.
+
+```python
+registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
+```
+
+## ModelBase
