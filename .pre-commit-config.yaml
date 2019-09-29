@@ -4,7 +4,6 @@ repos:
     hooks:
       - id: end-of-file-fixer
       - id: flake8
-        exclude: "configs"
       - id: trailing-whitespace
   - repo: "https://github.com/asottile/seed-isort-config"
     rev: v1.9.2
@@ -18,3 +17,4 @@ repos:
     rev: stable
     hooks:
       - id: black
+exclude: ^tests/protos/.*$

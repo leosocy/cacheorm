@@ -6,7 +6,7 @@ from cacheorm.serializers import (
     JSONSerializer,
     MessagePackSerializer,
     PickleSerializer,
-ProtobufSerializer,
+    ProtobufSerializer,
     SerializerRegistry,
 )
 
@@ -92,6 +92,8 @@ def person():
         "name": "John Doe",
         "id": 1234,
         "email": "jdoe@example.com",
-        "phones": [{"number": "123", "type": person_pb2.Person.PhoneType.HOME},
-                   {"number": "456", "type": person_pb2.Person.PhoneType.MOBILE}]
+        "phones": [
+            {"number": "123", "type": person_pb2.Person.PhoneType.HOME},
+            {"number": "456", "type": person_pb2.Person.PhoneType.MOBILE},
+        ],
     }
