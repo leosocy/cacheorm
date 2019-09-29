@@ -1,5 +1,7 @@
 import threading
 
+from cacheorm.types import Singleton
+
 
 class BaseSerializer(object):  # pragma: no cover
     def dumps(self, obj) -> bytes:
@@ -11,8 +13,7 @@ class BaseSerializer(object):  # pragma: no cover
         raise NotImplementedError
 
 
-# TODO(leosocy): Singleton
-class SerializerRegistry(object):
+class SerializerRegistry(metaclass=Singleton):
     def __init__(self):
         self._serializers = {}
         self._lock = threading.Lock()
@@ -34,6 +35,21 @@ class SerializerRegistry(object):
             if unique_name in self._serializers:
                 raise ValueError("serializer {} already exists".format(unique_name))
             self._serializers[unique_name] = serializer
+
+    def unregister(self, unique_name):
+        """Unregister registered serializer.
+
+        Arguments:
+            unique_name (str): Registered serializer name.
+
+        Raises:
+            KeyError: If a serializer by that name cannot be found.
+        """
+        with self._lock:
+            try:
+                self._serializers.pop(unique_name)
+            except KeyError:
+                raise KeyError("serializer {} not found".format(unique_name))
 
     def get_by_name(self, unique_name):
         return self._serializers.get(unique_name, None)
@@ -87,10 +103,10 @@ class ProtobufSerializer(BaseSerializer):
         self._descriptor = descriptor
 
     def dumps(self, obj):
+        if isinstance(obj, dict):
+            obj = self._descriptor(**obj)
         if isinstance(obj, self._descriptor):
             return self._descriptor.SerializeToString(obj)
-        if isinstance(obj, dict):
-            return self._descriptor.SerializeToString(self._descriptor(**obj))
         raise TypeError(
             "protocol buffer serializer `dumps` only support Dict/Pb object"
         )
@@ -100,6 +116,9 @@ class ProtobufSerializer(BaseSerializer):
 
 
 registry = SerializerRegistry()
-registry.register("json", JSONSerializer())
-registry.register("msgpack", MessagePackSerializer())
-registry.register("pickle", PickleSerializer())
+
+
+def register_preset_serializers():
+    registry.register("json", JSONSerializer())
+    registry.register("msgpack", MessagePackSerializer())
+    registry.register("pickle", PickleSerializer())

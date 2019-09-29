@@ -3,11 +3,9 @@ import os
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 from cacheorm.serializers import (
-    JSONSerializer,
-    MessagePackSerializer,
-    PickleSerializer,
     ProtobufSerializer,
     SerializerRegistry,
+    register_preset_serializers,
 )
 
 
@@ -66,14 +64,15 @@ def registry():
 
 @pytest.fixture()
 def normal_serializers(registry):
-    registry.register("json", JSONSerializer())
-    registry.register("msgpack", MessagePackSerializer())
-    registry.register("pickle", PickleSerializer())
+    register_preset_serializers()
     yield (
         registry.get_by_name("json"),
         registry.get_by_name("msgpack"),
         registry.get_by_name("pickle"),
     )
+    registry.unregister("pickle")
+    registry.unregister("msgpack")
+    registry.unregister("json")
 
 
 @pytest.fixture()
@@ -82,6 +81,7 @@ def person_protobuf_serializer(registry):
 
     registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
     yield registry.get_by_name("protobuf.person")
+    registry.unregister("protobuf.person")
 
 
 @pytest.fixture()

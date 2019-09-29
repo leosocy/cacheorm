@@ -2,7 +2,7 @@ import pytest
 from cacheorm.serializers import JSONSerializer
 
 
-def test_registry(registry):
+def test_registry_register_unregister(registry):
     registry.register("json", JSONSerializer())
     serializer = registry.get_by_name("json")
     assert isinstance(serializer, JSONSerializer)
@@ -11,6 +11,11 @@ def test_registry(registry):
         registry.register("json", None)
     # not found
     assert registry.get_by_name("unknown") is None
+    # unregister
+    registry.unregister("json")
+    # repeat unregister
+    with pytest.raises(KeyError):
+        registry.unregister("json")
 
 
 def test_normal_serializers_dumps_loads(normal_serializers, person):
