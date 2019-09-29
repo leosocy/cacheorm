@@ -22,6 +22,7 @@ setuptools.setup(
     author_email="leosocy@gmail.com",
     description="A cache-based python ORM.",
     long_description=readme,
+    long_description_content_type="text/markdown",
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python",
