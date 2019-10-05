@@ -10,6 +10,10 @@ def to_bytes(value):
     raise TypeError("'%s' object can't covert to bytes" % type(value))
 
 
+def with_metaclass(meta, name, base=object):
+    return meta(name, (base,), {})
+
+
 class Singleton(type):
     """A metaclass that creates a Singleton base class when called."""
 

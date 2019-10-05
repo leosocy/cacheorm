@@ -2,7 +2,7 @@ import math
 import random
 import time
 
-from cacheorm.types import to_bytes
+from .types import to_bytes
 
 
 class BaseBackend(object):  # pragma: no cover

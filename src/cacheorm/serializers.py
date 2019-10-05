@@ -1,6 +1,6 @@
 import threading
 
-from cacheorm.types import Singleton
+from .types import Singleton
 
 
 class BaseSerializer(object):  # pragma: no cover

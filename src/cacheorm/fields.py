@@ -69,4 +69,9 @@ class BooleanField(Field):
 
 
 class StringField(Field):
-    adapt = str
+    def adapt(self, value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bytes):
+            return value.decode(encoding="utf-8")
+        return str(value)

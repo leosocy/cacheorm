@@ -2,6 +2,7 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
+from cacheorm.models import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
     SerializerRegistry,
@@ -97,3 +98,13 @@ def person():
             {"number": "456", "type": person_pb2.Person.PhoneType.MOBILE},
         ],
     }
+
+
+@pytest.fixture()
+def base_model(redis_client, registry, normal_serializers):
+    class BaseModel(Model):
+        class Meta:
+            backend = redis_client
+            serializer = registry.get_by_name("json")
+
+    yield BaseModel
