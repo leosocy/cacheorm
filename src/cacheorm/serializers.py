@@ -51,6 +51,11 @@ class SerializerRegistry(metaclass=Singleton):
             except KeyError:
                 raise KeyError("serializer {} not found".format(unique_name))
 
+    def unregister_all(self):
+        """Unregister all registered serializers"""
+        with self._lock:
+            self._serializers.clear()
+
     def get_by_name(self, unique_name):
         return self._serializers.get(unique_name, None)
 
