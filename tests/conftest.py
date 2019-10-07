@@ -97,10 +97,14 @@ def person():
 
 @pytest.fixture()
 def base_model(backend, serializer):
+    b = backend
+    s = serializer
+
     class BaseModel(Model):
         class Meta:
-            backend = backend
-            serializer = serializer
+            backend = b
+            serializer = s
+            ttl = 10 * 60
 
     return BaseModel
 
