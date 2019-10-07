@@ -17,11 +17,10 @@ class Field(object):
     # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
-    def __init__(self, null=False, default=None, primary_key=False, choices=None):
+    def __init__(self, null=False, default=None, primary_key=False):
         self.null = null
         self.default = default
         self.primary_key = primary_key
-        self.choices = choices
         self.model = None
         self.name = None
 
@@ -61,7 +60,7 @@ class FloatField(Field):
     adapt = float
 
 
-# TODO(leosocy): DecimalField
+# TODO(leosocy): DecimalField, EnumField, AutoField
 
 
 class BooleanField(Field):

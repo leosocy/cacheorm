@@ -2,7 +2,7 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
-from cacheorm.fields import StringField
+from cacheorm.fields import BooleanField, FloatField, StringField
 from cacheorm.models import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
@@ -113,6 +113,8 @@ def base_model(backend, serializer):
 def person_model(base_model):
     class Person(base_model):
         name = StringField(primary_key=True)
+        height = FloatField()
+        married = BooleanField(default=False)
         email = StringField(null=True)
 
     return Person

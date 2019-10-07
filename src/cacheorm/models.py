@@ -25,6 +25,7 @@ class Metadata(object):
         self.name = name or model.__name__.lower()
 
         self.fields = {}
+        self.defaults = {}
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -33,6 +34,8 @@ class Metadata(object):
     def add_field(self, field_name, field, set_attribute=True):
         field.bind(self.model, field_name, set_attribute)
         self.fields[field.name] = field
+        if field.default is not None:
+            self.defaults[field] = field.default
 
     def set_primary_key(self, name, field):
         self.add_field(name, field)
@@ -135,12 +138,23 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         setattr(self, self._meta.primary_key.name, value)
 
     def _generate_insert(self, insert):
-        fields = [
-            field
-            for field in self._meta.fields.values()
-            if field not in self._meta.get_primary_keys()
-        ]
-        return {field.name: field.cache_value(insert[field.name]) for field in fields}
+        primary_keys = self._meta.get_primary_keys()
+        rv = {}
+        for name, field in self._meta.fields.items():
+            if field in primary_keys:
+                continue
+            converter = field.cache_value
+            try:
+                val = converter(insert[name])
+            except KeyError:
+                if field.default is not None:
+                    val = converter(self._meta.defaults[field])
+                elif field.null:
+                    continue
+                else:
+                    raise ValueError("missing value for '%s'." % field)
+            rv[name] = val
+        return rv
 
     def save(self, force_insert=False):
         query = {self._meta.primary_key.name: self._pk}
@@ -148,6 +162,19 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         insert = self._generate_insert(self.__data__)
         value = self._meta.serializer.dumps(insert)
         return self._meta.backend.set(cache_key, value)
+
+    def __hash__(self):
+        return hash((self.__class__, self._pk))
+
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self._pk is not None
+            and self._pk == other._pk
+        )
+
+    def __ne__(self, other):
+        return not self == other
 
     @classmethod
     def create(cls, **query):
@@ -162,7 +189,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         converted_row = {}
         for k, v in row.items():
             converted_row[k] = cls._meta.fields[k].python_value(v)
-        return cls(**converted_row)
+        return cls(**query, **converted_row)
 
     @classmethod
     def get_by_id(cls, pk):
