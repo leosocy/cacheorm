@@ -10,7 +10,7 @@ class SchemaManager(object):
 
     def make_primary_cache_key(self, **query):
         return f"{self.model._meta.name}." + ".".join(
-            query[field.name] for field in self.model._meta.get_primary_keys()
+            str(query[field.name]) for field in self.model._meta.get_primary_keys()
         )
 
 
@@ -85,7 +85,7 @@ class ModelBase(type):
                 if k in attrs:
                     continue
                 if isinstance(v, FieldAccessor) and not v.field.primary_key:
-                    attrs[k] = copy.deepcopy(v)
+                    attrs[k] = copy.deepcopy(v.field)
 
         schema_options = meta_options.pop("schema_options", {})
 
@@ -108,7 +108,7 @@ class ModelBase(type):
                 pk, pk_name = (
                     (parent_pk, parent_pk.name)
                     if parent_pk is not None
-                    else (IntegerField(), "id")
+                    else (IntegerField(primary_key=True), "id")
                 )
             else:
                 pk = False
