@@ -161,7 +161,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         cache_key = self._schema.make_primary_cache_key(**query)
         insert = self._generate_insert(self.__data__)
         value = self._meta.serializer.dumps(insert)
-        return self._meta.backend.set(cache_key, value)
+        return self._meta.backend.set(cache_key, value, ttl=self._meta.ttl)
 
     def __hash__(self):
         return hash((self.__class__, self._pk))
@@ -185,7 +185,10 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def get(cls, **query):
         cache_key = cls._schema.make_primary_cache_key(**query)
-        row = cls._meta.serializer.loads(cls._meta.backend.get(cache_key))
+        value = cls._meta.backend.get(cache_key)
+        if value is None:
+            return
+        row = cls._meta.serializer.loads(value)
         converted_row = {}
         for k, v in row.items():
             converted_row[k] = cls._meta.fields[k].python_value(v)
