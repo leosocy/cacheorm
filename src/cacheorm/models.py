@@ -1,7 +1,46 @@
 import copy
+import itertools
 
 from .fields import Field, FieldAccessor, IntegerField
 from .types import with_metaclass
+
+
+class Index(object):
+    def __init__(self, model, fields, formatter=None):
+        self.model = model
+        self.fields = fields
+        if formatter is None:
+            formatter = self._generate_formatter(model, fields)
+        self.name = formatter
+
+    def make_cache_key(self, **query):
+        pass
+
+    @staticmethod
+    def _generate_formatter(model, fields):
+        base = "m:%s:" % model._meta.name
+        field_parts = ":".join(itertools.chain(*[(f.name, "%s") for f in fields]))
+        return base + field_parts
+
+
+class PrimaryKeyIndex(Index):
+    def __init__(self, model, formatter=None):
+        super(PrimaryKeyIndex, self).__init__(
+            model, model._meta.get_primary_keys(), formatter
+        )
+
+
+class IndexManager(object):
+    def __init__(self, model):
+        self.model = model
+
+    def _create_indexes(self):
+        """
+        class Meta:
+            primary_key = CompositeKey("user_id", "game_id")
+            indexes = ((("user_id", "game_id"), "m:UserGame:u:%s:g:%s"))
+        """
+        pass
 
 
 class SchemaManager(object):
@@ -113,7 +152,10 @@ class ModelBase(type):
                 pk, pk_name = (
                     (parent_pk, parent_pk.name)
                     if parent_pk is not None
-                    else (IntegerField(primary_key=True), "id")
+                    else (
+                        IntegerField(primary_key=True),
+                        "id",
+                    )  # TODO(leosocy): AutoField
                 )
             else:
                 pk = False
@@ -139,6 +181,19 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         self.__data__ = {}
         for k, v in kwargs.items():
             setattr(self, k, v)
+
+    def __hash__(self):
+        return hash((self.__class__, self._pk))
+
+    def __eq__(self, other):
+        return (
+            self.__class__ == other.__class__
+            and self._pk is not None
+            and self._pk == other._pk
+        )
+
+    def __ne__(self, other):
+        return not self == other
 
     def get_id(self):
         return getattr(self, self._meta.primary_key.name)
@@ -169,24 +224,20 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return rv
 
     def save(self, force_insert=False):
+        # TODO(leosocy): support force_insert
         query = {self._meta.primary_key.name: self._pk}
         cache_key = self._schema.make_primary_cache_key(**query)
         insert = self._generate_insert(self.__data__)
         value = self._meta.serializer.dumps(insert)
         return self._meta.backend.set(cache_key, value, ttl=self._meta.ttl)
 
-    def __hash__(self):
-        return hash((self.__class__, self._pk))
+    @classmethod
+    def insert(cls, **insert):
+        pass
 
-    def __eq__(self, other):
-        return (
-            self.__class__ == other.__class__
-            and self._pk is not None
-            and self._pk == other._pk
-        )
-
-    def __ne__(self, other):
-        return not self == other
+    @classmethod
+    def insert_many(cls, rows):
+        pass
 
     @classmethod
     def create(cls, **query):
@@ -212,3 +263,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def get_by_id(cls, pk):
         query = {cls._meta.primary_key.name: pk}
         return cls.get(**query)
+
+    @classmethod
+    def set_by_id(cls, pk, value):
+        pass
+
+    @classmethod
+    def delete_by_id(cls, pk):
+        pass

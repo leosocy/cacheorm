@@ -42,6 +42,8 @@ class BaseBackend(object):  # pragma: no cover
     def has(self, key):
         raise NotImplementedError
 
+    # TODO(leosocy): support incr/decr add/replace
+
 
 class SimpleBackend(BaseBackend):
     def __init__(self, threshold=100, default_ttl=300):
