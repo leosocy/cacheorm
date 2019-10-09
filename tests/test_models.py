@@ -8,6 +8,7 @@ def test_create(person_model):
     amy = person_model.create(name="Amy", height=167.5, email="Amy@gmail.com")
     sam = person_model(name="Sam", height=178.6, married=True)
     sam.save()
+    assert amy != sam
     got_amy = person_model.get_by_id("Amy")
     assert got_amy == amy
     assert got_amy.email == amy.email == "Amy@gmail.com"
@@ -46,7 +47,7 @@ def test_create_override_parent_pk(person_model):
 def test_create_over_determined_pk(person_model):
     with pytest.raises(ValueError, match="over-determined"):
 
-        class _(person_model):
+        class Student(person_model):
             id = IntegerField(primary_key=True)
             name = StringField(primary_key=True)
 
@@ -54,7 +55,7 @@ def test_create_over_determined_pk(person_model):
 def test_create_false_pk(base_model):
     with pytest.raises(ValueError, match="required primary key"):
 
-        class _(base_model):
+        class Student(base_model):
             class Meta:
                 primary_key = False
 
@@ -80,5 +81,5 @@ def test_get_when_cache_expired(person_model):
     got_sam = WrappedPerson.get_by_id("Sam")
     assert got_sam == sam
     time.sleep(1.1)
-    got_sam = WrappedPerson.get_by_id("Sam")
-    assert got_sam is None
+    with pytest.raises(WrappedPerson.DoesNotExist):
+        WrappedPerson.get_by_id("Sam")

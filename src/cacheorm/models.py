@@ -26,6 +26,7 @@ class Metadata(object):
 
         self.fields = {}
         self.defaults = {}
+        self.primary_key = primary_key
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -46,6 +47,10 @@ class Metadata(object):
 
     def set_backend(self, backend):
         self.backend = backend
+
+
+class DoesNotExist(Exception):
+    pass
 
 
 MODEL_BASE_NAME = "__metaclass_helper__"
@@ -119,7 +124,14 @@ class ModelBase(type):
         for name, field in fields:
             cls._meta.add_field(name, field)
 
+        exc_name = "%sDoesNotExist" % cls.__name__
+        exc_attrs = {"__module__": cls.__module__}
+        cls.DoesNotExist = type(exc_name, (DoesNotExist,), exc_attrs)
+
         return cls
+
+    def __repr__(cls):
+        return "<Model: %s>" % cls.__name__
 
 
 class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
@@ -187,7 +199,9 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         cache_key = cls._schema.make_primary_cache_key(**query)
         value = cls._meta.backend.get(cache_key)
         if value is None:
-            return
+            raise cls.DoesNotExist(
+                "%s instance matching query does not exist:\nQuery: %s" % (cls, query)
+            )
         row = cls._meta.serializer.loads(value)
         converted_row = {}
         for k, v in row.items():
