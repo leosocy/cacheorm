@@ -12,6 +12,7 @@
 - SimpleBackend
 - RedisBackend
 - MemcachedBackend
+- TODO: FileSystemBackend
 
 ### Methods
 
@@ -22,6 +23,9 @@
 - `get_many(*keys)`
 - `delete_many(*keys)`
 - `has(key)`
+- TODO: `add(key value)`: Store this data, only if it does not already exist.
+- TODO: `replace(key, value)`: Store this data, but only if the data already exists.
+- TODO: `incr/decr(key)`
 
 ## Serializer
 
@@ -35,11 +39,88 @@
 All serializers are registered to a registry singleton.
 Provide `json`, `msgpack`, `pickle` three preset serializers.
 
-You can register your own serializer,
-such as a Protobuf serializer that registers a `Person` message.
+You can register your own serializer, such as a Protobuf serializer with a `Person` message.
 
 ```python
 registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
 ```
 
-## ModelBase
+## Model
+
+### Declare
+
+```python
+import datetime
+import cacheorm as co
+
+class Person(co.Model):
+    name = co.StringField(primary_key=True)
+    height = co.FloatField()
+    married = co.BooleanField(default=False)
+    email = co.StringField(null=True)
+
+    class Meta:
+        backend = redis
+        serializer = co.registry.get_by_name("json")
+
+
+class Note(co.Model):
+    author = co.StringField()
+    title = co.StringField()
+    content = co.StringField()
+    created_at = co.DateTimeField(default=datetime.datetime.now)
+    updated_at = co.DateTimeField(default=datetime.datetime.now)
+
+    class Meta:
+        backend = redis
+        serializer = co.registry.get_by_name("protobuf.note")
+        ttl = 100 * 24 * 3600
+
+
+class Comment(co.Model):
+    commenter = co.StringField()
+    note_id = co.IntegerField()
+    content = co.StringField()
+
+    class Meta:
+        primary_key = co.CompositeField("person_name", "note_id", index_formatter="comment.%s.%d")
+        backend = memcached
+        serializer = co.registry.get_by_name("msgpack")
+```
+
+#### Meta
+
+- primary_key
+- backend
+- serializer
+- ttl
+
+### Create
+
+```python
+sam = Person.create(name="Sam", height=178.8, emial="sam@gmail.com")
+bob = Person.create(name="Bob", height=182.4, emial="Bob@gmail.com")
+note = Note.create(author=sam, title="CacheORM", content="Create a note using cacheorm.")
+comment = Comment.create(commenter=bob, note_id=note.id, content="CacheORM is so good!")
+```
+
+### Get
+
+### Update
+
+### Delete
+
+## Fields
+
+- IntegerField
+- FloatField
+- TODO: DecimalField
+- TODO: EnumField
+- TODO: AutoField
+- TODO: CompositeField
+- BooleanField
+- StringField
+- TODO: DateTimeField
+- TODO: TimestampField
+
+## Signals
