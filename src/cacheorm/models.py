@@ -11,10 +11,11 @@ class Index(object):
         self.fields = fields
         if formatter is None:
             formatter = self._generate_formatter(model, fields)
-        self.name = formatter
+        self.formatter = formatter
 
     def make_cache_key(self, **query):
-        pass
+        values = tuple(query[field.name] for field in self.fields)
+        return self.formatter % values
 
     @staticmethod
     def _generate_formatter(model, fields):
@@ -26,36 +27,38 @@ class Index(object):
 class PrimaryKeyIndex(Index):
     def __init__(self, model, formatter=None):
         super(PrimaryKeyIndex, self).__init__(
-            model, model._meta.get_primary_keys(), formatter
+            model, model._meta.get_primary_key_fields(), formatter
         )
 
 
 class IndexManager(object):
     def __init__(self, model):
         self.model = model
+        self.indexes = {}
 
-    def _create_indexes(self):
-        """
-        class Meta:
-            primary_key = CompositeKey("user_id", "game_id")
-            indexes = ((("user_id", "game_id"), "m:UserGame:u:%s:g:%s"))
-        """
-        pass
-
-
-class SchemaManager(object):
-    def __init__(self, model, **kwargs):
-        self.model = model
-
-    def make_primary_cache_key(self, **query):
-        return f"{self.model._meta.name}." + ".".join(
-            str(query[field.name]) for field in self.model._meta.get_primary_keys()
+    def _generate_indexes(self):
+        primary_key = self.model._meta.primary_key
+        self.indexes[primary_key] = PrimaryKeyIndex(
+            self.model, formatter=primary_key.index_formatter
         )
+
+    def get_primary_key_index(self):
+        return self.get_index(self.model._meta.primary_key)
+
+    def get_index(self, field):
+        return self.indexes.get(field, None)
 
 
 class Metadata(object):
     def __init__(
-        self, model, backend, serializer, ttl, name=None, primary_key=None, **kwargs
+        self,
+        model,
+        backend,
+        serializer,
+        ttl=None,
+        name=None,
+        primary_key=None,
+        **kwargs
     ):
         self.model = model
         self.backend = backend
@@ -81,7 +84,7 @@ class Metadata(object):
         self.add_field(name, field)
         self.primary_key = field
 
-    def get_primary_keys(self):
+    def get_primary_key_fields(self):
         return (self.primary_key,)
 
     def set_backend(self, backend):
@@ -131,12 +134,10 @@ class ModelBase(type):
                 if isinstance(v, FieldAccessor) and not v.field.primary_key:
                     attrs[k] = copy.deepcopy(v.field)
 
-        schema_options = meta_options.pop("schema_options", {})
-
         cls = super(ModelBase, cls).__new__(cls, name, bases, attrs)
         cls.__data__ = None
         cls._meta = Metadata(cls, **meta_options)
-        cls._schema = SchemaManager(cls, **schema_options)
+        cls._index_manager = IndexManager(cls)
 
         fields = []
         for key, value in cls.__dict__.items():
@@ -165,6 +166,8 @@ class ModelBase(type):
 
         for name, field in fields:
             cls._meta.add_field(name, field)
+
+        cls._index_manager._generate_indexes()
 
         exc_name = "%sDoesNotExist" % cls.__name__
         exc_attrs = {"__module__": cls.__module__}
@@ -205,10 +208,10 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         setattr(self, self._meta.primary_key.name, value)
 
     def _generate_insert(self, insert):
-        primary_keys = self._meta.get_primary_keys()
+        primary_key_fields = self._meta.get_primary_key_fields()
         rv = {}
         for name, field in self._meta.fields.items():
-            if field in primary_keys:
+            if field in primary_key_fields:
                 continue
             converter = field.cache_value
             try:
@@ -226,7 +229,8 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def save(self, force_insert=False):
         # TODO(leosocy): support force_insert
         query = {self._meta.primary_key.name: self._pk}
-        cache_key = self._schema.make_primary_cache_key(**query)
+        index = self._index_manager.get_primary_key_index()
+        cache_key = index.make_cache_key(**query)
         insert = self._generate_insert(self.__data__)
         value = self._meta.serializer.dumps(insert)
         return self._meta.backend.set(cache_key, value, ttl=self._meta.ttl)
@@ -247,7 +251,8 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def get(cls, **query):
-        cache_key = cls._schema.make_primary_cache_key(**query)
+        index = cls._index_manager.get_primary_key_index()
+        cache_key = index.make_cache_key(**query)
         value = cls._meta.backend.get(cache_key)
         if value is None:
             raise cls.DoesNotExist(
@@ -271,3 +276,6 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def delete_by_id(cls, pk):
         pass
+
+
+# TODO(leosocy): class Insert to handle data insertion.

@@ -17,10 +17,15 @@ class Field(object):
     # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
-    def __init__(self, null=False, default=None, primary_key=False):
+    def __init__(
+        self, null=False, default=None, primary_key=False, index_formatter=None
+    ):
         self.null = null
         self.default = default
         self.primary_key = primary_key
+        if not primary_key and index_formatter is not None:
+            raise ValueError("only primary_key supports setting index formatter")
+        self.index_formatter = index_formatter
         self.model = None
         self.name = None
 

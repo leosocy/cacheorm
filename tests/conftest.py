@@ -118,3 +118,18 @@ def person_model(base_model):
         email = StringField(null=True)
 
     return Person
+
+
+@pytest.fixture()
+def noop_person_model():
+    class Person(Model):
+        name = StringField(primary_key=True)
+        height = FloatField()
+        married = BooleanField(default=False)
+        email = StringField(null=True)
+
+        class Meta:
+            backend = None
+            serializer = None
+
+    return Person
