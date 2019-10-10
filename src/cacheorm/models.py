@@ -278,4 +278,21 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         pass
 
 
-# TODO(leosocy): class Insert to handle data insertion.
+class Insert(object):
+    def __init__(self, model, insert):
+        self._model = model
+        self._insert = insert
+
+    def _generate_rows(self):
+        return self._insert
+
+    def execute(self):
+        mapping = {}
+        meta = self._model._meta
+        cache_key_maker = (
+            self._model._index_manager.get_primary_key_index().make_cache_key
+        )
+        for row in self._generate_rows():
+            cache_key = cache_key_maker(**row)
+            mapping[cache_key] = meta.serializer.dumps(row)
+        return meta.backend.set_many(mapping, meta.ttl)

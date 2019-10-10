@@ -77,13 +77,12 @@ class Note(co.Model):
         ttl = 100 * 24 * 3600
 
 
-class Comment(co.Model):
-    commenter = co.StringField()
+class Collection(co.Model):
+    collector = co.StringField()
     note_id = co.IntegerField()
-    content = co.StringField()
 
     class Meta:
-        primary_key = co.CompositeField("person_name", "note_id", index_formatter="comment.%s.%d")
+        primary_key = co.CompositeField("collector", "note_id", index_formatter="collection.%s.%d")
         backend = memcached
         serializer = co.registry.get_by_name("msgpack")
 ```
@@ -101,7 +100,7 @@ class Comment(co.Model):
 sam = Person.create(name="Sam", height=178.8, emial="sam@gmail.com")
 bob = Person.create(name="Bob", height=182.4, emial="Bob@gmail.com")
 note = Note.create(author=sam, title="CacheORM", content="Create a note using cacheorm.")
-comment = Comment.create(commenter=bob, note_id=note.id, content="CacheORM is so good!")
+Collection.create(collector=bob, note_id=note.id)
 ```
 
 ### Get
