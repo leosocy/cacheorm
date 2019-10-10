@@ -1,6 +1,6 @@
 import threading
 
-from cacheorm.types import Singleton
+from .types import Singleton
 
 
 class BaseSerializer(object):  # pragma: no cover
@@ -50,6 +50,11 @@ class SerializerRegistry(metaclass=Singleton):
                 self._serializers.pop(unique_name)
             except KeyError:
                 raise KeyError("serializer {} not found".format(unique_name))
+
+    def unregister_all(self):
+        """Unregister all registered serializers"""
+        with self._lock:
+            self._serializers.clear()
 
     def get_by_name(self, unique_name):
         return self._serializers.get(unique_name, None)

@@ -3,7 +3,6 @@ from cacheorm.serializers import JSONSerializer
 
 
 def test_registry_register_unregister(registry):
-    registry.register("json", JSONSerializer())
     serializer = registry.get_by_name("json")
     assert isinstance(serializer, JSONSerializer)
     # repeat register
@@ -18,7 +17,7 @@ def test_registry_register_unregister(registry):
         registry.unregister("json")
 
 
-def test_normal_serializers_dumps_loads(normal_serializers, person):
+def test_normal_serializers_dumps_loads(serializer, person):
     objs = (
         1,
         1.23,
@@ -31,12 +30,11 @@ def test_normal_serializers_dumps_loads(normal_serializers, person):
         person,
     )
     for obj in objs:
-        for serializer in normal_serializers:
-            s = serializer.dumps(obj)
-            assert s
-            assert isinstance(s, bytes)
-            o = serializer.loads(s)
-            assert obj == o
+        s = serializer.dumps(obj)
+        assert s
+        assert isinstance(s, bytes)
+        o = serializer.loads(s)
+        assert obj == o
 
 
 def test_protobuf_serializer_dumps_loads(person_protobuf_serializer, person):

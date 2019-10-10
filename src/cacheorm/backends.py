@@ -2,7 +2,7 @@ import math
 import random
 import time
 
-from cacheorm.types import to_bytes
+from .types import to_bytes
 
 
 class BaseBackend(object):  # pragma: no cover
@@ -41,6 +41,8 @@ class BaseBackend(object):  # pragma: no cover
 
     def has(self, key):
         raise NotImplementedError
+
+    # TODO(leosocy): support incr/decr add/replace
 
 
 class SimpleBackend(BaseBackend):

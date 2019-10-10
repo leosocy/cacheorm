@@ -2,6 +2,8 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
+from cacheorm.fields import BooleanField, FloatField, StringField
+from cacheorm.models import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
     SerializerRegistry,
@@ -47,32 +49,27 @@ def memcached_client(memcached_client_args):
     client.flush_all()
 
 
-@pytest.fixture()
-def general_flow_test_backends(redis_client, memcached_client):
-    yield (
-        SimpleBackend(),
-        RedisBackend(client=redis_client),
-        MemcachedBackend(client=memcached_client),
-    )
+@pytest.fixture(params=("simple", "redis", "memcached"))
+def backend(redis_client, memcached_client, request):
+    if request.param == "simple":
+        return SimpleBackend()
+    elif request.param == "redis":
+        return RedisBackend(client=redis_client)
+    elif request.param == "memcached":
+        return MemcachedBackend(client=memcached_client)
 
 
 @pytest.fixture()
 def registry():
     registry = SerializerRegistry()
-    yield registry
-
-
-@pytest.fixture()
-def normal_serializers(registry):
     register_preset_serializers()
-    yield (
-        registry.get_by_name("json"),
-        registry.get_by_name("msgpack"),
-        registry.get_by_name("pickle"),
-    )
-    registry.unregister("pickle")
-    registry.unregister("msgpack")
-    registry.unregister("json")
+    yield registry
+    registry.unregister_all()
+
+
+@pytest.fixture(params=("json", "msgpack", "pickle"))
+def serializer(registry, request):
+    return registry.get_by_name(request.param)
 
 
 @pytest.fixture()
@@ -89,11 +86,50 @@ def person():
     from .protos import person_pb2
 
     return {
-        "name": "John Doe",
-        "id": 1234,
-        "email": "jdoe@example.com",
+        "name": "leosocy",
+        "email": "leosocy@gmail.com",
         "phones": [
             {"number": "123", "type": person_pb2.Person.PhoneType.HOME},
             {"number": "456", "type": person_pb2.Person.PhoneType.MOBILE},
         ],
     }
+
+
+@pytest.fixture()
+def base_model(backend, serializer):
+    b = backend
+    s = serializer
+
+    class BaseModel(Model):
+        class Meta:
+            backend = b
+            serializer = s
+            ttl = 10 * 60
+
+    return BaseModel
+
+
+@pytest.fixture()
+def person_model(base_model):
+    class Person(base_model):
+        name = StringField(primary_key=True)
+        height = FloatField()
+        married = BooleanField(default=False)
+        email = StringField(null=True)
+
+    return Person
+
+
+@pytest.fixture()
+def noop_person_model():
+    class Person(Model):
+        name = StringField(primary_key=True)
+        height = FloatField()
+        married = BooleanField(default=False)
+        email = StringField(null=True)
+
+        class Meta:
+            backend = None
+            serializer = None
+
+    return Person

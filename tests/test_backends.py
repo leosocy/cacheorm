@@ -6,65 +6,62 @@ from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 from cacheorm.types import to_bytes
 
 
-def test_general_flow_set_get_delete(general_flow_test_backends):
+def test_general_flow_set_get_delete(backend):
     import pickle
 
     key = "foo"
     values = ("foo.test", "", 1, pickle.dumps({"test": "foo"}))
     year_ttl = 365 * 24 * 60 * 60
     for value in values:
-        for backend in general_flow_test_backends:
-            assert backend.get(key) is None
-            assert not backend.has(key)
-            assert backend.set(key, value, ttl=year_ttl)
-            assert to_bytes(value) == backend.get(key)
-            assert backend.has(key)
-            new_value = bytes("foo.test.new", encoding="utf-8")
-            backend.set(key, new_value)
-            assert new_value == backend.get(key)
-            assert backend.delete(key)
-            assert not backend.has(key)
+        assert backend.get(key) is None
+        assert not backend.has(key)
+        assert backend.set(key, value, ttl=year_ttl)
+        assert to_bytes(value) == backend.get(key)
+        assert backend.has(key)
+        new_value = bytes("foo.test.new", encoding="utf-8")
+        backend.set(key, new_value)
+        assert new_value == backend.get(key)
+        assert backend.delete(key)
+        assert not backend.has(key)
 
 
-def test_general_flow_cache_expired(general_flow_test_backends):
+def test_general_flow_cache_expired(backend):
     key = "foo"
     value = "foo.test"
     ttl = 1
-    for backend in general_flow_test_backends:
-        # cache 1s, not available after 1s
-        backend.set(key, value, ttl=ttl)
-        assert backend.has(key)
-        time.sleep(1.1 * ttl)
-        assert backend.get(key) is None
-        assert not backend.has(key)
-        # cache never expires
-        backend.set(key, value, ttl=0)
-        assert backend.has(key)
-        time.sleep(1.1 * ttl)
-        assert to_bytes(value) == backend.get(key)
-        assert backend.has(key)
+    # cache 1s, not available after 1s
+    backend.set(key, value, ttl=ttl)
+    assert backend.has(key)
+    time.sleep(1.1 * ttl)
+    assert backend.get(key) is None
+    assert not backend.has(key)
+    # cache never expires
+    backend.set(key, value, ttl=0)
+    assert backend.has(key)
+    time.sleep(1.1 * ttl)
+    assert to_bytes(value) == backend.get(key)
+    assert backend.has(key)
 
 
-def test_general_flow_set_get_delete_many(general_flow_test_backends):
+def test_general_flow_set_get_delete_many(backend):
     mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
     keys = list(mapping.keys())
-    for backend in general_flow_test_backends:
-        values = backend.get_many(*keys)
-        assert len(mapping) == len(values)
-        for v in values:
-            assert v is None
-        assert backend.set_many(mapping)
-        assert list(map(to_bytes, mapping.values())) == backend.get_many(*keys)
-        for k in keys:
-            assert backend.has(k)
-        rv = backend.get_dict(*keys)
-        assert {k: to_bytes(v) for k, v in mapping.items()} == rv
-        values = backend.get_many(*keys, "unknown")
-        assert len(mapping) + 1 == len(values)
-        assert values[-1] is None
-        assert backend.delete_many(*keys)
-        for k in keys:
-            assert not backend.has(k)
+    values = backend.get_many(*keys)
+    assert len(mapping) == len(values)
+    for v in values:
+        assert v is None
+    assert backend.set_many(mapping)
+    assert list(map(to_bytes, mapping.values())) == backend.get_many(*keys)
+    for k in keys:
+        assert backend.has(k)
+    rv = backend.get_dict(*keys)
+    assert {k: to_bytes(v) for k, v in mapping.items()} == rv
+    values = backend.get_many(*keys, "unknown")
+    assert len(mapping) + 1 == len(values)
+    assert values[-1] is None
+    assert backend.delete_many(*keys)
+    for k in keys:
+        assert not backend.has(k)
 
 
 def test_simple_backend_exceeded_threshold():
