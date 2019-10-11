@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pytest
 from cacheorm.fields import IntegerField, StringField
 
@@ -23,12 +25,12 @@ def test_create_using_parent_pk(person_model):
     class Student(person_model):
         number = StringField()
 
-    sam = Student(name="Sam", height=178.6, number="190110101")
-    sam.save()
+    data = dict(name="Sam", height=178.6, number="190110101")
+    Student.insert(**data).execute()
     got_sam = Student.get(name="Sam")
-    assert got_sam.name == sam.name
-    assert got_sam.number == sam.number
-    assert got_sam.height == sam.height
+    assert got_sam.name == data["name"]
+    assert got_sam.number == data["number"]
+    assert got_sam.height == data["height"]
     assert got_sam.married is not None and not got_sam.married
 
 
@@ -62,9 +64,34 @@ def test_create_auto_field(base_model):
     pass
 
 
-def test_bulk_create(person_model):
+def test_create_composite_pk(base_model):
     pass
+
+
+def test_bulk_create(person_model):
+    rows = [
+        dict(name="Sam", height=178.6, number="190110101"),
+        dict(name="Amy", height=167.5, married=True),
+    ]
+    with mock.patch.object(
+        person_model._meta.backend,
+        "set_many",
+        wraps=person_model._meta.backend.set_many,
+    ) as mock_set_many:
+        person_model.insert_many(rows).execute()
+        assert person_model.get_by_id("Sam")
+        assert person_model.get_by_id("Amy")
+        mock_set_many.assert_called_once()
 
 
 def test_bulk_create_empty(person_model):
-    pass
+    with pytest.raises(ValueError):
+        person_model.insert_many({}).execute()
+
+    with mock.patch.object(
+        person_model._meta.backend,
+        "set_many",
+        wraps=person_model._meta.backend.set_many,
+    ) as mock_set_many:
+        person_model.insert_many([])
+        mock_set_many.assert_not_called()

@@ -207,41 +207,18 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def _pk(self, value):
         setattr(self, self._meta.primary_key.name, value)
 
-    def _generate_insert(self, insert):
-        primary_key_fields = self._meta.get_primary_key_fields()
-        rv = {}
-        for name, field in self._meta.fields.items():
-            if field in primary_key_fields:
-                continue
-            converter = field.cache_value
-            try:
-                val = converter(insert[name])
-            except KeyError:
-                if field.default is not None:
-                    val = converter(self._meta.defaults[field])
-                elif field.null:
-                    continue
-                else:
-                    raise ValueError("missing value for '%s'." % field)
-            rv[name] = val
-        return rv
-
     def save(self, force_insert=False):
         # TODO(leosocy): support force_insert
-        query = {self._meta.primary_key.name: self._pk}
-        index = self._index_manager.get_primary_key_index()
-        cache_key = index.make_cache_key(**query)
-        insert = self._generate_insert(self.__data__)
-        value = self._meta.serializer.dumps(insert)
-        return self._meta.backend.set(cache_key, value, ttl=self._meta.ttl)
+        field_dict = self.__data__.copy()
+        return self.insert(**field_dict).execute()
 
     @classmethod
     def insert(cls, **insert):
-        pass
+        return Insert(cls, insert)
 
     @classmethod
     def insert_many(cls, rows):
-        pass
+        return Insert(cls, rows)
 
     @classmethod
     def create(cls, **query):
@@ -283,16 +260,46 @@ class Insert(object):
         self._model = model
         self._insert = insert
 
-    def _generate_rows(self):
-        return self._insert
+    def _generate_insert(self, insert):
+        rows_iter = iter(insert)
+        primary_key_fields = self._model._meta.get_primary_key_fields()
+        primary_key_index = self._model._index_manager.get_primary_key_index()
+        defaults = self._model._meta.defaults
+        fields_converters = [
+            (field, field.cache_value) for field in self._model._meta.fields.values()
+        ]
+        for row in rows_iter:
+            payload = {}
+            index_values = {}
+            for field, converter in fields_converters:
+                try:
+                    val = converter(row[field.name])
+                except KeyError:
+                    if field in defaults:
+                        # TODO(leosocy): support callable default
+                        val = defaults[field]
+                    elif field.null:
+                        continue
+                    else:
+                        raise ValueError("missing value for '%s'." % field)
+                if field in primary_key_fields:
+                    index_values[field.name] = val
+                else:
+                    payload[field.name] = val
+            yield primary_key_index.make_cache_key(**index_values), payload
+
+    def _simple_insert(self):
+        if not self._insert:
+            raise ValueError("no data to insert")
+        return self._generate_insert((self._insert,))
 
     def execute(self):
         mapping = {}
         meta = self._model._meta
-        cache_key_maker = (
-            self._model._index_manager.get_primary_key_index().make_cache_key
-        )
-        for row in self._generate_rows():
-            cache_key = cache_key_maker(**row)
-            mapping[cache_key] = meta.serializer.dumps(row)
+        if isinstance(self._insert, dict):
+            iterator = self._simple_insert()
+        else:
+            iterator = self._generate_insert(self._insert)
+        for cache_key, payload in iterator:
+            mapping[cache_key] = meta.serializer.dumps(payload)
         return meta.backend.set_many(mapping, meta.ttl)
