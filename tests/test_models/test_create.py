@@ -78,9 +78,9 @@ def test_bulk_create(person_model):
         "set_many",
         wraps=person_model._meta.backend.set_many,
     ) as mock_set_many:
-        person_model.insert_many(rows).execute()
-        assert person_model.get_by_id("Sam")
-        assert person_model.get_by_id("Amy")
+        insts = person_model.insert_many(rows).execute()
+        assert insts[0] == person_model.get_by_id("Sam")
+        assert insts[1] == person_model.get_by_id("Amy")
         mock_set_many.assert_called_once()
 
 

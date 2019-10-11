@@ -210,7 +210,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def save(self, force_insert=False):
         # TODO(leosocy): support force_insert
         field_dict = self.__data__.copy()
-        return self.insert(**field_dict).execute()
+        self.insert(**field_dict).execute()
 
     @classmethod
     def insert(cls, **insert):
@@ -263,14 +263,13 @@ class Insert(object):
     def _generate_insert(self, insert):
         rows_iter = iter(insert)
         primary_key_fields = self._model._meta.get_primary_key_fields()
-        primary_key_index = self._model._index_manager.get_primary_key_index()
         defaults = self._model._meta.defaults
         fields_converters = [
             (field, field.cache_value) for field in self._model._meta.fields.values()
         ]
         for row in rows_iter:
             payload = {}
-            index_values = {}
+            index = {}
             for field, converter in fields_converters:
                 try:
                     val = converter(row[field.name])
@@ -283,10 +282,10 @@ class Insert(object):
                     else:
                         raise ValueError("missing value for '%s'." % field)
                 if field in primary_key_fields:
-                    index_values[field.name] = val
+                    index[field.name] = val
                 else:
                     payload[field.name] = val
-            yield primary_key_index.make_cache_key(**index_values), payload
+            yield index, payload
 
     def _simple_insert(self):
         if not self._insert:
@@ -295,11 +294,16 @@ class Insert(object):
 
     def execute(self):
         mapping = {}
+        instances = []
         meta = self._model._meta
+        primary_key_index = self._model._index_manager.get_primary_key_index()
         if isinstance(self._insert, dict):
             iterator = self._simple_insert()
         else:
             iterator = self._generate_insert(self._insert)
-        for cache_key, payload in iterator:
+        for index, payload in iterator:
+            instances.append(self._model(**index, **payload))
+            cache_key = primary_key_index.make_cache_key(**index)
             mapping[cache_key] = meta.serializer.dumps(payload)
-        return meta.backend.set_many(mapping, meta.ttl)
+        meta.backend.set_many(mapping, meta.ttl)
+        return instances
