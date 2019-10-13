@@ -26,11 +26,11 @@ def test_create_using_parent_pk(person_model):
         number = StringField()
 
     data = dict(name="Sam", height=178.6, number="190110101")
-    Student.insert(**data).execute()
+    sam = Student.insert(**data).execute()
     got_sam = Student.get(name="Sam")
-    assert got_sam.name == data["name"]
-    assert got_sam.number == data["number"]
-    assert got_sam.height == data["height"]
+    assert got_sam.name == sam.name
+    assert got_sam.number == sam.number
+    assert got_sam.height == sam.height
     assert got_sam.married is not None and not got_sam.married
 
 
@@ -68,10 +68,10 @@ def test_create_composite_pk(base_model):
     pass
 
 
-def test_bulk_create(person_model):
+def test_insert_many(person_model):
     rows = [
         dict(name="Sam", height=178.6, number="190110101"),
-        dict(name="Amy", height=167.5, married=True),
+        person_model(name="Amy", height=167.5, married=True),
     ]
     with mock.patch.object(
         person_model._meta.backend,
@@ -84,7 +84,7 @@ def test_bulk_create(person_model):
         mock_set_many.assert_called_once()
 
 
-def test_bulk_create_empty(person_model):
+def test_insert_many_empty(person_model):
     with pytest.raises(ValueError):
         person_model.insert_many({}).execute()
 

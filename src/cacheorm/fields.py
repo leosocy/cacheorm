@@ -17,6 +17,7 @@ class Field(object):
     # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
+    # TODO(leosocy): support callable index_formatter
     def __init__(
         self, null=False, default=None, primary_key=False, index_formatter=None
     ):
@@ -30,16 +31,12 @@ class Field(object):
         self.name = None
 
     def __hash__(self):
-        return hash(
-            "{model}.{field}".format(model=self.model.__name__, field=self.name)
-        )
+        return hash("%s.%s" % (self.model.__name__, self.name))
 
     def __repr__(self):
         if self.model and self.name:
-            return "<{}: {}.{}>".format(
-                type(self).__name__, self.model.__name__, self.name
-            )
-        return "<{}: (unbound)>".format(type(self).__name__)
+            return "<%s: %s.%s>" % (type(self).__name__, self.model.__name__, self.name)
+        return "<%s: (unbound)>" % type(self).__name__
 
     def bind(self, model, name, set_attribute=True):
         self.model = model

@@ -1,5 +1,6 @@
 import copy
 import itertools
+from collections import defaultdict
 
 from .fields import Field, FieldAccessor, IntegerField
 from .types import with_metaclass
@@ -9,16 +10,20 @@ class Index(object):
     def __init__(self, model, fields, formatter=None):
         self.model = model
         self.fields = fields
+        self.field_names = {field.name for field in fields}
         if formatter is None:
-            formatter = self._generate_formatter(model, fields)
+            formatter = self._default_formatter(model, fields)
         self.formatter = formatter
 
     def make_cache_key(self, **query):
-        values = tuple(query[field.name] for field in self.fields)
+        missing_keys = self.field_names - set(query.keys())
+        if missing_keys:
+            raise KeyError("missing index keys %s in query" % missing_keys)
+        values = tuple(field.cache_value(query[field.name]) for field in self.fields)
         return self.formatter % values
 
     @staticmethod
-    def _generate_formatter(model, fields):
+    def _default_formatter(model, fields):
         base = "m:%s:" % model._meta.name
         field_parts = ":".join(itertools.chain(*[(f.name, "%s") for f in fields]))
         return base + field_parts
@@ -214,15 +219,22 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def insert(cls, **insert):
-        return Insert(cls, insert)
+        return ModelInsert(cls, insert)
 
     @classmethod
-    def insert_many(cls, rows):
-        return Insert(cls, rows)
+    def insert_many(cls, insert_list):
+        """
+        :param insert_list:
+        [{"name": "Sam"}, {"name", "Amy"}]
+        or
+        [Person(name="Sam"), Person(name="Amy")]
+        :return:
+        """
+        return ModelInsert(cls, insert_list)
 
     @classmethod
-    def create(cls, **query):
-        inst = cls(**query)
+    def create(cls, **kwargs):
+        inst = cls(**kwargs)
         inst.save(force_insert=True)
         return inst
 
@@ -242,68 +254,135 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return cls(**query, **converted_row)
 
     @classmethod
+    def get_or_create(cls, **kwargs):
+        pass
+
+    @classmethod
     def get_by_id(cls, pk):
         query = {cls._meta.primary_key.name: pk}
         return cls.get(**query)
+
+    @classmethod
+    def filter(cls, **filters):
+        pass
+
+    @classmethod
+    def filter_many(cls, filter_list):
+        pass
 
     @classmethod
     def set_by_id(cls, pk, value):
         pass
 
     @classmethod
+    def update(cls, **update):
+        pass
+
+    @classmethod
+    def update_many(cls, update_list):
+        pass
+
+    @classmethod
     def delete_by_id(cls, pk):
         pass
 
+    @classmethod
+    def delete(cls, **delete):
+        pass
 
+    @classmethod
+    def delete_many(cls, delete_list):
+        pass
+
+
+# NOTE: insert不关心是否是一类Model
 class Insert(object):
-    def __init__(self, model, insert):
-        self._model = model
-        self._insert = insert
+    # TODO(leosocy): support chunk_size
+    def __init__(self, insert_list):
+        """
+        Insert inserts data list in batches, support different model.
 
-    def _generate_insert(self, insert):
-        rows_iter = iter(insert)
-        primary_key_fields = self._model._meta.get_primary_key_fields()
-        defaults = self._model._meta.defaults
-        fields_converters = [
-            (field, field.cache_value) for field in self._model._meta.fields.values()
-        ]
-        for row in rows_iter:
-            payload = {}
-            index = {}
-            for field, converter in fields_converters:
-                try:
-                    val = converter(row[field.name])
-                except KeyError:
-                    if field in defaults:
-                        # TODO(leosocy): support callable default
-                        val = defaults[field]
-                    elif field.null:
-                        continue
-                    else:
-                        raise ValueError("missing value for '%s'." % field)
-                if field in primary_key_fields:
-                    index[field.name] = val
-                else:
-                    payload[field.name] = val
-            yield index, payload
-
-    def _simple_insert(self):
-        if not self._insert:
-            raise ValueError("no data to insert")
-        return self._generate_insert((self._insert,))
+        :param insert_list:
+        [Person(name="Sam"), Note(content="foo")]
+            or
+        [(Person, ({"name": "Sam"}, {"name": "Amy"})), (Note, ({"content": "foo"},))]
+        """
+        self._insert_list = insert_list
 
     def execute(self):
-        mapping = {}
         instances = []
-        meta = self._model._meta
-        primary_key_index = self._model._index_manager.get_primary_key_index()
-        if isinstance(self._insert, dict):
-            iterator = self._simple_insert()
-        else:
-            iterator = self._generate_insert(self._insert)
-        for index, payload in iterator:
-            instances.append(self._model(**index, **payload))
+        group_by_meta = defaultdict(dict)
+        for model, index, payload in self._generate_insert(self._insert_list):
+            meta = model._meta
+            primary_key_index = model._index_manager.get_primary_key_index()
+            instances.append(model(**index, **payload))
             cache_key = primary_key_index.make_cache_key(**index)
-            mapping[cache_key] = meta.serializer.dumps(payload)
-        meta.backend.set_many(mapping, meta.ttl)
+            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
+                payload
+            )
+        for (backend, ttl), mapping in group_by_meta.items():
+            backend.set_many(mapping, ttl=ttl)
         return instances
+
+    @staticmethod
+    def _parse_model_rows(insert):
+        if isinstance(insert, Model):
+            model = type(insert)
+            rows = (insert.__data__,)
+        elif isinstance(insert, tuple) and isinstance(insert[0], ModelBase):
+            model = insert[0]
+            rows = insert[1]
+        else:
+            raise TypeError("unsupported insert type")
+        return model, rows
+
+    @staticmethod
+    def _generate_insert(insert_list):
+        for insert in insert_list:
+            model, rows = Insert._parse_model_rows(insert)
+            fields_converters = [
+                (field, field.cache_value) for field in model._meta.fields.values()
+            ]
+            defaults = model._meta.defaults
+            primary_key_fields = model._meta.get_primary_key_fields()
+            for row in rows:
+                payload = {}
+                index = {}
+                for field, converter in fields_converters:
+                    try:
+                        val = converter(row[field.name])
+                    except KeyError:
+                        if field in defaults:
+                            # TODO(leosocy): support callable default
+                            val = defaults[field]
+                        elif field.null:
+                            continue
+                        else:
+                            raise ValueError("missing value for '%s'." % field)
+                    if field in primary_key_fields:
+                        index[field.name] = val
+                    else:
+                        payload[field.name] = val
+                yield model, index, payload
+
+
+class ModelInsert(Insert):
+    def __init__(self, model, insert):
+        self._single = False
+        insert_list = []
+        if isinstance(insert, dict):
+            self._single = True
+            insert_list.append((model, (insert,)))
+        elif isinstance(insert, (list, tuple)):
+            for ele in insert:
+                if isinstance(ele, dict):
+                    insert_list.append((model, (ele,)))
+                elif isinstance(ele, model):
+                    insert_list.append(ele)
+        else:
+            raise TypeError("unsupported insert type")
+        super(ModelInsert, self).__init__(insert_list)
+
+    def execute(self):
+        instances = super(ModelInsert, self).execute()
+        return instances[0] if self._single else instances
