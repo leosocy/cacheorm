@@ -46,7 +46,7 @@ def test_get_by_id(person_model, person_data):
 def test_get_or_none(person_model, person_data):
     person = person_model.get_or_none(name="Sam")
     assert person == person_data["Sam"]
-    assert person_model.get_by_id("Unknown") is None
+    assert person_model.get_or_none(name="Unknown") is None
 
 
 def test_get_or_create(person_model, person_data):

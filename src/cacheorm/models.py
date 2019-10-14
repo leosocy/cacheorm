@@ -237,31 +237,21 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return inst
 
     @classmethod
-    def get(cls, **query):
-        index = cls._index_manager.get_primary_key_index()
-        cache_key = index.make_cache_key(**query)
-        value = cls._meta.backend.get(cache_key)
-        if value is None:
-            raise cls.DoesNotExist(
-                "%s instance matching query does not exist:\nQuery: %s" % (cls, query)
-            )
-        row = cls._meta.serializer.loads(value)
-        converted_row = {}
-        for k, v in row.items():
-            converted_row[k] = cls._meta.fields[k].python_value(v)
-        return cls(**query, **converted_row)
-
-    @classmethod
-    def query(cls, **queries):
-        pass
+    def query(cls, **query):
+        return ModelQuery(cls, query)
 
     @classmethod
     def query_many(cls, query_list):
-        """
-        :param query_list: [{"name": "Sam"}, {"name": "Amy"}]
-        :return: ModelQuery object
-        """
-        pass
+        return ModelQuery(cls, query_list)
+
+    @classmethod
+    def get(cls, **query):
+        inst = cls.query(**query).execute()
+        if inst is None:
+            raise cls.DoesNotExist(
+                "%s instance matching query does not exist:\nQuery: %s" % (cls, query)
+            )
+        return inst
 
     @classmethod
     def get_by_id(cls, pk):
@@ -270,11 +260,17 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def get_or_none(cls, **query):
-        pass
+        try:
+            return cls.get(**query)
+        except DoesNotExist:
+            return None
 
     @classmethod
     def get_or_create(cls, **kwargs):
-        pass
+        try:
+            return cls.get(**kwargs), False
+        except DoesNotExist:
+            return cls.create(**kwargs), True
 
     @classmethod
     def update(cls, **update):
@@ -372,7 +368,55 @@ class Insert(object):
 
 
 class Query(object):
-    pass
+    def __init__(self, query_list):
+        """
+        :param query_list:
+        [(Person, ({"name": "Sam"}, {"name": "Amy"}),
+         (Note, ({"id": 1},))]
+        """
+        self._query_list = query_list
+
+    def execute(self):
+        instances = []
+        group_by_backend = defaultdict(list)
+        for model, index in self._generate_query(self._query_list):
+            group_by_backend[model._meta.backend].append((model, index))
+        for backend, pairs in group_by_backend.items():
+            cache_keys = []
+            for model, index in pairs:
+                primary_key_index = model._index_manager.get_primary_key_index()
+                cache_key = primary_key_index.make_cache_key(**index)
+                cache_keys.append(cache_key)
+            for val, (model, index) in zip(backend.get_many(*cache_keys), pairs):
+                if val is not None:
+                    val = model._meta.serializer.loads(val)
+                    converted_row = {}
+                    for k, v in val.items():
+                        converted_row[k] = model._meta.fields[k].python_value(v)
+                    instances.append(model(**index, **converted_row))
+                else:
+                    instances.append(None)
+        return instances
+
+    @staticmethod
+    def _generate_query(query_list):
+        for query in query_list:
+            model, rows = query
+            defaults = model._meta.defaults
+            primary_key_fields = model._meta.get_primary_key_fields()
+            for row in rows:
+                index = {}
+                for field in primary_key_fields:
+                    converter = field.cache_value
+                    try:
+                        val = converter(row[field.name])
+                    except KeyError:
+                        if field in defaults:
+                            val = defaults[field]
+                        else:
+                            raise ValueError("missing value for '%s'." % field)
+                    index[field.name] = val
+                yield model, index
 
 
 class ModelInsert(Insert):
@@ -398,4 +442,17 @@ class ModelInsert(Insert):
 
 
 class ModelQuery(Query):
-    pass
+    def __init__(self, model, query):
+        self._single = False
+        if isinstance(query, dict):
+            self._single = True
+            query_list = [(model, (query,))]
+        elif isinstance(query, (list, tuple)):
+            query_list = [(model, query)]
+        else:
+            raise TypeError("unsupported insert type")
+        super(ModelQuery, self).__init__(query_list)
+
+    def execute(self):
+        instances = super(ModelQuery, self).execute()
+        return instances[0] if self._single else instances
