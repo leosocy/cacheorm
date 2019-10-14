@@ -225,10 +225,8 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def insert_many(cls, insert_list):
         """
         :param insert_list:
-        [{"name": "Sam"}, {"name", "Amy"}]
-        or
-        [Person(name="Sam"), Person(name="Amy")]
-        :return:
+        [{"name": "Sam"}, Person(name="Amy"), ...]
+        :return: ModelInsert object
         """
         return ModelInsert(cls, insert_list)
 
@@ -254,7 +252,15 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return cls(**query, **converted_row)
 
     @classmethod
-    def get_or_create(cls, **kwargs):
+    def query(cls, **queries):
+        pass
+
+    @classmethod
+    def query_many(cls, query_list):
+        """
+        :param query_list: [{"name": "Sam"}, {"name": "Amy"}]
+        :return: ModelQuery object
+        """
         pass
 
     @classmethod
@@ -263,15 +269,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return cls.get(**query)
 
     @classmethod
-    def filter(cls, **filters):
+    def get_or_none(cls, **query):
         pass
 
     @classmethod
-    def filter_many(cls, filter_list):
-        pass
-
-    @classmethod
-    def set_by_id(cls, pk, value):
+    def get_or_create(cls, **kwargs):
         pass
 
     @classmethod
@@ -283,7 +285,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         pass
 
     @classmethod
-    def delete_by_id(cls, pk):
+    def set_by_id(cls, pk, value):
         pass
 
     @classmethod
@@ -294,8 +296,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def delete_many(cls, delete_list):
         pass
 
+    @classmethod
+    def delete_by_id(cls, pk):
+        pass
 
-# NOTE: insert不关心是否是一类Model
+
 class Insert(object):
     # TODO(leosocy): support chunk_size
     def __init__(self, insert_list):
@@ -366,6 +371,10 @@ class Insert(object):
                 yield model, index, payload
 
 
+class Query(object):
+    pass
+
+
 class ModelInsert(Insert):
     def __init__(self, model, insert):
         self._single = False
@@ -386,3 +395,7 @@ class ModelInsert(Insert):
     def execute(self):
         instances = super(ModelInsert, self).execute()
         return instances[0] if self._single else instances
+
+
+class ModelQuery(Query):
+    pass
