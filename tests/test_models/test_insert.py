@@ -25,7 +25,7 @@ def test_create_using_parent_pk(person_model):
     class Student(person_model):
         number = StringField()
 
-    data = dict(name="Sam", height=178.6, number="190110101")
+    data = {"name": "Sam", "height": 178.6, "number": "190110101"}
     sam = Student.insert(**data).execute()
     got_sam = Student.get(name="Sam")
     assert got_sam.name == sam.name
@@ -70,7 +70,7 @@ def test_create_composite_pk(base_model):
 
 def test_insert_many(person_model):
     rows = [
-        dict(name="Sam", height=178.6, number="190110101"),
+        {"name": "Sam", "height": 178.6, "number": "190110101"},
         person_model(name="Amy", height=167.5, married=True),
     ]
     with mock.patch.object(

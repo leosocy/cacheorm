@@ -7,9 +7,9 @@ import pytest
 def person_data(person_model):
     persons = person_model.insert_many(
         [
-            dict(name="Sam", height=178.6),
-            dict(name="Amy", height=167.5, email="Amy@gmail.com"),
-            dict(name="Daming", height=180, married=True),
+            {"name": "Sam", "height": 178.6},
+            {"name": "Amy", "height": 167.5, "email": "Amy@gmail.com"},
+            {"name": "Daming", "height": 180, "married": True},
         ]
     ).execute()
     return {p.name: p for p in persons}
@@ -24,7 +24,7 @@ def test_query(person_model, person_data):
 
 def test_query_many(person_model, person_data):
     persons = person_model.query_many(
-        [dict(name="Sam"), dict(name="Daming"), dict(name="Unknown")]
+        [{"name": "Sam"}, {"name": "Daming"}, {"name": "Unknown"}]
     ).execute()
     assert len(persons) == 3
     assert persons[1] == person_data["Daming"]
