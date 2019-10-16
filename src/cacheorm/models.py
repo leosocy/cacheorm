@@ -201,7 +201,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         )
 
     def __ne__(self, other):
-        return not self == other
+        return not self.__eq__(other)
 
     def get_id(self):
         return getattr(self, self._meta.primary_key.name)
@@ -213,20 +213,35 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         setattr(self, self._meta.primary_key.name, value)
 
     def save(self, force_insert=False):
+        """
+        保存self到backend。
+        :param force_insert: 仅当self.pk有值时有效，如果为False则为update，否则为insert
+        :return: 是否保存成功。
+        :rtype: boolean
+        :raise: ValueError: 缺少构造Model字段所需的值
+        """
         # TODO(leosocy): support force_insert
         field_dict = self.__data__.copy()
         self.insert(**field_dict).execute()
 
     @classmethod
     def insert(cls, **insert):
+        """
+        无条件插入数据到backend，如果记录已经存在，则覆盖旧值。
+        :param insert: fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果成功插入则返回Model对象，否则为None
+        :rtype: ModelObject
+        """
         return ModelInsert(cls, insert)
 
     @classmethod
     def insert_many(cls, insert_list):
         """
+        无条件插入一批数据到backend，
         :param insert_list:
         [{"name": "Sam"}, Person(name="Amy"), ...]
-        :return: ModelInsert object
+        :return: [ModelObject, ModelObject, ...]
+        :rtype: list
         """
         return ModelInsert(cls, insert_list)
 
@@ -238,14 +253,38 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def query(cls, **query):
+        """
+        根据主键fields对应的values去backend查找。
+        :param query: primary key fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果找到则返回Model对象，否则为None
+        :rtype: ModelObject
+        :raise: ValueError: query中缺少构造主键cache_key的所需的键值
+        """
         return ModelQuery(cls, query)
 
     @classmethod
     def query_many(cls, query_list):
+        """
+        根据一批主键fields对应的values去backend查找。
+        :param query_list:
+        [{"name": "Sam"}, {"name": "Amy"}, ...]
+        :return: [ModelObject, None, ...]
+        :rtype: list
+        :raise: ValueError: query中缺少构造主键cache_key的所需的键值
+        """
         return ModelQuery(cls, query_list)
 
     @classmethod
     def get(cls, **query):
+        """
+        根据主键fields对应的values去backend查找。
+        :param query: primary key fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果找到则返回Model对象，否则抛错
+        :rtype: ModelObject
+        :raises:
+        ValueError: query中缺少构造主键cache_key的所需的键值
+        DoesNotExist: 记录不存在
+        """
         inst = cls.query(**query).execute()
         if inst is None:
             raise cls.DoesNotExist(
@@ -274,10 +313,22 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def update(cls, **update):
+        """
+        覆盖backend中主键{fields: values}对应的记录。
+        :param update: 同insert
+        :return: 覆盖成功则返回ModelObject；如果原记录不存在否则返回None
+        :rtype: ModelObject
+        """
         pass
 
     @classmethod
     def update_many(cls, update_list):
+        """
+        批量覆盖backend中主键{fields: values}对应的记录。
+        :param update_list: 同insert_many
+        :return: [ModelObject, None, ...]
+        :rtype: list
+        """
         pass
 
     @classmethod
@@ -286,11 +337,22 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def delete(cls, **delete):
+        """
+        根据主键fields对应的values去backend删除。
+        :param delete: 同query
+        :return: affected_rows
+        :rtype: int
+        """
         pass
 
     @classmethod
     def delete_many(cls, delete_list):
-        pass
+        """
+        根据一批主键fields对应的values去backend删除。
+        :param delete_list: 同query_many
+        :return: affected_rows
+        :rtype: int
+        """
 
     @classmethod
     def delete_by_id(cls, pk):
