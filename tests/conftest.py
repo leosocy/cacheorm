@@ -2,7 +2,7 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
-from cacheorm.fields import BooleanField, FloatField, StringField
+from cacheorm.fields import BooleanField, FloatField, IntegerField, StringField
 from cacheorm.models import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
@@ -96,14 +96,11 @@ def person():
 
 
 @pytest.fixture()
-def base_model(backend, serializer):
-    b = backend
-    s = serializer
-
+def base_model(redis_client, registry):
     class BaseModel(Model):
         class Meta:
-            backend = b
-            serializer = s
+            backend = RedisBackend(client=redis_client)
+            serializer = registry.get_by_name("json")
             ttl = 10 * 60
 
     return BaseModel
@@ -133,3 +130,17 @@ def noop_person_model():
             serializer = None
 
     return Person
+
+
+@pytest.fixture()
+def note_model(base_model):
+    class Note(base_model):
+        id = IntegerField(primary_key=True)
+        author_id = StringField()
+        title = StringField()
+        content = StringField(default="")
+
+        class Meta:
+            ttl = 24 * 3600
+
+    return Note

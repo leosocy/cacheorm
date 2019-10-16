@@ -1,5 +1,6 @@
 import copy
 import itertools
+from collections import defaultdict
 
 from .fields import Field, FieldAccessor, IntegerField
 from .types import with_metaclass
@@ -9,16 +10,20 @@ class Index(object):
     def __init__(self, model, fields, formatter=None):
         self.model = model
         self.fields = fields
+        self.field_names = {field.name for field in fields}
         if formatter is None:
-            formatter = self._generate_formatter(model, fields)
+            formatter = self._default_formatter(model, fields)
         self.formatter = formatter
 
     def make_cache_key(self, **query):
-        values = tuple(query[field.name] for field in self.fields)
+        missing_keys = self.field_names - set(query.keys())
+        if missing_keys:
+            raise KeyError("missing index keys %s in query" % missing_keys)
+        values = tuple(field.cache_value(query[field.name]) for field in self.fields)
         return self.formatter % values
 
     @staticmethod
-    def _generate_formatter(model, fields):
+    def _default_formatter(model, fields):
         base = "m:%s:" % model._meta.name
         field_parts = ":".join(itertools.chain(*[(f.name, "%s") for f in fields]))
         return base + field_parts
@@ -196,7 +201,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         )
 
     def __ne__(self, other):
-        return not self == other
+        return not self.__eq__(other)
 
     def get_id(self):
         return getattr(self, self._meta.primary_key.name)
@@ -207,62 +212,85 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def _pk(self, value):
         setattr(self, self._meta.primary_key.name, value)
 
-    def _generate_insert(self, insert):
-        primary_key_fields = self._meta.get_primary_key_fields()
-        rv = {}
-        for name, field in self._meta.fields.items():
-            if field in primary_key_fields:
-                continue
-            converter = field.cache_value
-            try:
-                val = converter(insert[name])
-            except KeyError:
-                if field.default is not None:
-                    val = converter(self._meta.defaults[field])
-                elif field.null:
-                    continue
-                else:
-                    raise ValueError("missing value for '%s'." % field)
-            rv[name] = val
-        return rv
-
     def save(self, force_insert=False):
+        """
+        保存self到backend。
+        :param force_insert: 仅当self.pk有值时有效，如果为False则为update，否则为insert
+        :return: 是否保存成功。
+        :rtype: boolean
+        :raise: ValueError: 缺少构造Model字段所需的值
+        """
         # TODO(leosocy): support force_insert
-        query = {self._meta.primary_key.name: self._pk}
-        index = self._index_manager.get_primary_key_index()
-        cache_key = index.make_cache_key(**query)
-        insert = self._generate_insert(self.__data__)
-        value = self._meta.serializer.dumps(insert)
-        return self._meta.backend.set(cache_key, value, ttl=self._meta.ttl)
+        field_dict = self.__data__.copy()
+        self.insert(**field_dict).execute()
 
     @classmethod
     def insert(cls, **insert):
-        pass
+        """
+        无条件插入数据到backend，如果记录已经存在，则覆盖旧值。
+        :param insert: fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果成功插入则返回Model对象，否则为None
+        :rtype: ModelObject
+        """
+        return ModelInsert(cls, insert)
 
     @classmethod
-    def insert_many(cls, rows):
-        pass
+    def insert_many(cls, insert_list):
+        """
+        无条件插入一批数据到backend，
+        :param insert_list:
+        [{"name": "Sam"}, Person(name="Amy"), ...]
+        :return: [ModelObject, ModelObject, ...]
+        :rtype: list
+        """
+        return ModelInsert(cls, insert_list)
 
     @classmethod
-    def create(cls, **query):
-        inst = cls(**query)
+    def create(cls, **kwargs):
+        inst = cls(**kwargs)
         inst.save(force_insert=True)
         return inst
 
     @classmethod
+    def query(cls, **query):
+        """
+        根据主键fields对应的values去backend查找。
+        :param query: primary key fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果找到则返回Model对象，否则为None
+        :rtype: ModelObject
+        :raise: ValueError: query中缺少构造主键cache_key的所需的键值
+        """
+        return ModelQuery(cls, query)
+
+    @classmethod
+    def query_many(cls, query_list):
+        """
+        根据一批主键fields对应的values去backend查找。
+        :param query_list:
+        [{"name": "Sam"}, {"name": "Amy"}, ...]
+        :return: [ModelObject, None, ...]
+        :rtype: list
+        :raise: ValueError: query中缺少构造主键cache_key的所需的键值
+        """
+        return ModelQuery(cls, query_list)
+
+    @classmethod
     def get(cls, **query):
-        index = cls._index_manager.get_primary_key_index()
-        cache_key = index.make_cache_key(**query)
-        value = cls._meta.backend.get(cache_key)
-        if value is None:
+        """
+        根据主键fields对应的values去backend查找。
+        :param query: primary key fields对应的name和value，例如{"name": "Sam"}
+        :return: 如果找到则返回Model对象，否则抛错
+        :rtype: ModelObject
+        :raises:
+        ValueError: query中缺少构造主键cache_key的所需的键值
+        DoesNotExist: 记录不存在
+        """
+        inst = cls.query(**query).execute()
+        if inst is None:
             raise cls.DoesNotExist(
                 "%s instance matching query does not exist:\nQuery: %s" % (cls, query)
             )
-        row = cls._meta.serializer.loads(value)
-        converted_row = {}
-        for k, v in row.items():
-            converted_row[k] = cls._meta.fields[k].python_value(v)
-        return cls(**query, **converted_row)
+        return inst
 
     @classmethod
     def get_by_id(cls, pk):
@@ -270,12 +298,223 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return cls.get(**query)
 
     @classmethod
+    def get_or_none(cls, **query):
+        try:
+            return cls.get(**query)
+        except DoesNotExist:
+            return None
+
+    @classmethod
+    def get_or_create(cls, **kwargs):
+        try:
+            return cls.get(**kwargs), False
+        except DoesNotExist:
+            return cls.create(**kwargs), True
+
+    @classmethod
+    def update(cls, **update):
+        """
+        覆盖backend中主键{fields: values}对应的记录。
+        :param update: 同insert
+        :return: 覆盖成功则返回ModelObject；如果原记录不存在否则返回None
+        :rtype: ModelObject
+        """
+        pass
+
+    @classmethod
+    def update_many(cls, update_list):
+        """
+        批量覆盖backend中主键{fields: values}对应的记录。
+        :param update_list: 同insert_many
+        :return: [ModelObject, None, ...]
+        :rtype: list
+        """
+        pass
+
+    @classmethod
     def set_by_id(cls, pk, value):
         pass
+
+    @classmethod
+    def delete(cls, **delete):
+        """
+        根据主键fields对应的values去backend删除。
+        :param delete: 同query
+        :return: affected_rows
+        :rtype: int
+        """
+        pass
+
+    @classmethod
+    def delete_many(cls, delete_list):
+        """
+        根据一批主键fields对应的values去backend删除。
+        :param delete_list: 同query_many
+        :return: affected_rows
+        :rtype: int
+        """
 
     @classmethod
     def delete_by_id(cls, pk):
         pass
 
 
-# TODO(leosocy): class Insert to handle data insertion.
+class Insert(object):
+    # TODO(leosocy): support chunk_size
+    def __init__(self, insert_list):
+        """
+        Insert inserts data list in batches, support different model.
+
+        :param insert_list:
+        [Person(name="Sam"), Note(content="foo")]
+            or
+        [(Person, ({"name": "Sam"}, {"name": "Amy"})), (Note, ({"content": "foo"},))]
+        """
+        self._insert_list = insert_list
+
+    def execute(self):
+        instances = []
+        group_by_meta = defaultdict(dict)
+        for model, index, payload in self._generate_insert(self._insert_list):
+            meta = model._meta
+            primary_key_index = model._index_manager.get_primary_key_index()
+            instances.append(model(**index, **payload))
+            cache_key = primary_key_index.make_cache_key(**index)
+            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
+                payload
+            )
+        for (backend, ttl), mapping in group_by_meta.items():
+            backend.set_many(mapping, ttl=ttl)
+        return instances
+
+    @staticmethod
+    def _parse_model_rows(insert):
+        if isinstance(insert, Model):
+            model = type(insert)
+            rows = (insert.__data__,)
+        elif isinstance(insert, tuple) and isinstance(insert[0], ModelBase):
+            model = insert[0]
+            rows = insert[1]
+        else:
+            raise TypeError("unsupported insert type")
+        return model, rows
+
+    @staticmethod
+    def _generate_insert(insert_list):
+        for insert in insert_list:
+            model, rows = Insert._parse_model_rows(insert)
+            fields_converters = [
+                (field, field.cache_value) for field in model._meta.fields.values()
+            ]
+            defaults = model._meta.defaults
+            primary_key_fields = model._meta.get_primary_key_fields()
+            for row in rows:
+                payload = {}
+                index = {}
+                for field, converter in fields_converters:
+                    try:
+                        val = converter(row[field.name])
+                    except KeyError:
+                        if field in defaults:
+                            # TODO(leosocy): support callable default
+                            val = defaults[field]
+                        elif field.null:
+                            continue
+                        else:
+                            raise ValueError("missing value for '%s'." % field)
+                    if field in primary_key_fields:
+                        index[field.name] = val
+                    else:
+                        payload[field.name] = val
+                yield model, index, payload
+
+
+class Query(object):
+    def __init__(self, query_list):
+        """
+        :param query_list:
+        [(Person, ({"name": "Sam"}, {"name": "Amy"}),
+         (Note, ({"id": 1},))]
+        """
+        self._query_list = query_list
+
+    def execute(self):
+        instances = []
+        group_by_backend = defaultdict(list)
+        for model, index in self._generate_query(self._query_list):
+            group_by_backend[model._meta.backend].append((model, index))
+        for backend, pairs in group_by_backend.items():
+            cache_keys = []
+            for model, index in pairs:
+                primary_key_index = model._index_manager.get_primary_key_index()
+                cache_key = primary_key_index.make_cache_key(**index)
+                cache_keys.append(cache_key)
+            for val, (model, index) in zip(backend.get_many(*cache_keys), pairs):
+                if val is not None:
+                    val = model._meta.serializer.loads(val)
+                    converted_row = {}
+                    for k, v in val.items():
+                        converted_row[k] = model._meta.fields[k].python_value(v)
+                    instances.append(model(**index, **converted_row))
+                else:
+                    instances.append(None)
+        return instances
+
+    @staticmethod
+    def _generate_query(query_list):
+        for query in query_list:
+            model, rows = query
+            defaults = model._meta.defaults
+            primary_key_fields = model._meta.get_primary_key_fields()
+            for row in rows:
+                index = {}
+                for field in primary_key_fields:
+                    converter = field.cache_value
+                    try:
+                        val = converter(row[field.name])
+                    except KeyError:
+                        if field in defaults:
+                            val = defaults[field]
+                        else:
+                            raise ValueError("missing value for '%s'." % field)
+                    index[field.name] = val
+                yield model, index
+
+
+class ModelInsert(Insert):
+    def __init__(self, model, insert):
+        self._single = False
+        insert_list = []
+        if isinstance(insert, dict):
+            self._single = True
+            insert_list.append((model, (insert,)))
+        elif isinstance(insert, (list, tuple)):
+            for ele in insert:
+                if isinstance(ele, dict):
+                    insert_list.append((model, (ele,)))
+                elif isinstance(ele, model):
+                    insert_list.append(ele)
+        else:
+            raise TypeError("unsupported insert type")
+        super(ModelInsert, self).__init__(insert_list)
+
+    def execute(self):
+        instances = super(ModelInsert, self).execute()
+        return instances[0] if self._single else instances
+
+
+class ModelQuery(Query):
+    def __init__(self, model, query):
+        self._single = False
+        if isinstance(query, dict):
+            self._single = True
+            query_list = [(model, (query,))]
+        elif isinstance(query, (list, tuple)):
+            query_list = [(model, query)]
+        else:
+            raise TypeError("unsupported insert type")
+        super(ModelQuery, self).__init__(query_list)
+
+    def execute(self):
+        instances = super(ModelQuery, self).execute()
+        return instances[0] if self._single else instances

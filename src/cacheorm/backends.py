@@ -42,7 +42,7 @@ class BaseBackend(object):  # pragma: no cover
     def has(self, key):
         raise NotImplementedError
 
-    # TODO(leosocy): support incr/decr add/replace
+    # TODO(leosocy): support incr/decr add(many)/replace(many)
 
 
 class SimpleBackend(BaseBackend):

@@ -45,6 +45,7 @@ setuptools.setup(
             "mccabe",
             "flake8-bugbear",
             "pep8-naming",
+            "flake8-comprehensions",
             "redis>=3.0",
             "libmc>=1.3.0",
             "msgpack<1.0",
