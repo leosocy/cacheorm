@@ -6,6 +6,14 @@ from .types import to_bytes
 
 
 class BaseBackend(object):  # pragma: no cover
+    """Base class for the cache backends.
+    All the cache backends implement this API or a superset of it.
+
+    :param default_ttl: the default ttl (in seconds) that is used if
+                        no ttl is specified on :meth:`set`. A ttl
+                        of 0 indicates that the cache never expires.
+    """
+
     def __init__(self, default_ttl=600):
         self.default_ttl = default_ttl
 
@@ -15,37 +23,116 @@ class BaseBackend(object):  # pragma: no cover
         return int(max(ttl, 0))
 
     def set(self, key, value, ttl=None):
+        """Add a new key/value to the cache (overwrites value, if key already
+        exists in the cache).
+
+        :param key: the key to set
+        :param value: the value for the key
+        :param ttl: the cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 idicates that the cache never expires.
+        :returns: ``True`` if key has been updated, ``False`` for backend
+                  errors.
+        :rtype: boolean
+        """
         return True
 
+    # TODO(leosocy): support add/replace
+
     def get(self, key):
+        """Look up key in the cache and return the value for it.
+
+        :param key: the key to be looked up.
+        :returns: The value if it exists and is readable, else ``None``.
+        """
         return None
 
     def delete(self, key):
+        """Delete `key` from the cache.
+
+        :param key: the key to delete.
+        :returns: Whether the key existed and has been deleted.
+        :rtype: boolean
+        """
         return True
 
     def set_many(self, mapping, ttl=None):
-        rv = True
-        for k, v in mapping.items():
-            if not self.set(k, v, ttl):
-                rv = False
-        return rv
+        """Sets multiple keys and values from a mapping.
+
+        :param mapping: a mapping with the keys/values to set.
+        :param ttl: the cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 idicates that the cache never expires.
+        :returns: A dict of mapping.keys, for each value
+                  ``True`` if key has been updated, else ``False``
+        :rtype: dict
+        """
+        return {k: self.set(k, v, ttl) for k, v in mapping.items()}
 
     def get_many(self, *keys):
+        """Returns a list of values for the given keys.
+        For each key an item in the list is created::
+
+            foo, bar = cache.get_many("foo", "bar")
+
+        Has the same error handling as :meth:`get`.
+
+        :param keys: The function accepts multiple keys as positional arguments.
+        :returns: A list of values, for each value
+                ``True`` if it exists and is readable, else ``None``.
+        :rtype: list
+        """
         return [self.get(k) for k in keys]
 
     def get_dict(self, *keys):
+        """Like :meth:`get_many` but return a dict::
+
+            d = cache.get_dict("foo", "bar")
+            foo = d["foo"]
+            bar = d["bar"]
+
+        :param keys: The function accepts multiple keys as positional
+                     arguments.
+        """
         return dict(zip(keys, self.get_many(*keys)))
 
     def delete_many(self, *keys):
-        return all(self.delete(k) for k in keys)
+        """Deletes multiple keys at once.
+
+        :param keys: The function accepts multiple keys as positional
+                     arguments.
+        :returns: A list of boolean for the given keys
+                  ``True`` if the key existed and has been deleted, else ``False``
+        :rtype: list
+        """
+        return [self.delete(k) for k in keys]
 
     def has(self, key):
+        """Checks if a key exists in the cache without returning it. This is a
+        cheap operation that bypasses loading the actual data on the backend.
+
+        This method is optional and may not be implemented on all caches.
+
+        :param key: the key to check
+        """
         raise NotImplementedError
 
     # TODO(leosocy): support incr/decr add(many)/replace(many)
 
 
 class SimpleBackend(BaseBackend):
+    """Simple backend for single process environments.  This class exists
+    mainly for the development server and is not 100% thread safe.  It tries
+    to use as many atomic operations as possible and no locks for simplicity
+    but it could happen under heavy load that keys are added multiple times.
+
+    :param threshold: the maximum number of items the cache stores before
+                      it starts deleting some.
+    :param default_ttl: the default ttl that is used if no ttl is
+                        specified on :meth:`~BaseBackend.set`. A ttl of
+                        0 indicates that the cache never expires.
+    """
+
     def __init__(self, threshold=100, default_ttl=300):
         super(SimpleBackend, self).__init__(default_ttl)
         self._threshold = threshold
