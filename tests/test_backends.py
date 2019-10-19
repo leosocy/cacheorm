@@ -67,6 +67,20 @@ def test_general_flow_set_get_delete_many(backend):
         assert not backend.has(k)
 
 
+def test_general_flow_replace(backend):
+    key = "foo"
+    value = "foo.test"
+    year_ttl = 365 * 24 * 60 * 60
+    assert backend.replace(key, value, ttl=year_ttl) is False
+    assert not backend.has(key)
+    backend.set(key, value, ttl=year_ttl)
+    assert backend.has(key)
+    assert backend.replace(key, value, ttl=1) is True
+    assert backend.has(key)
+    time.sleep(1.1)
+    assert not backend.has(key)  # assert ttl has been update to 1
+
+
 def test_simple_backend_exceeded_threshold():
     # no keys expired，randomly pop
     backend = SimpleBackend(threshold=2)

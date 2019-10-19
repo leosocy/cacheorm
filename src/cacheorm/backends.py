@@ -38,7 +38,18 @@ class BaseBackend(object):  # pragma: no cover
         return True
 
     def replace(self, key, value, ttl=None):
-        pass
+        """Replace the key/value in the cache with value
+        (overwrites value only if the key already exists.).
+
+        :param key: the key to replace
+        :param value: the new value for the key
+        :param ttl: the new cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 indicates that the cache never expires.
+        :returns: ``True`` if key has been replaced, ``False`` if key does not exists.
+        :rtype: boolean
+        """
+        return True
 
     def get(self, key):
         """Look up key in the cache and return the value for it.
@@ -163,6 +174,13 @@ class SimpleBackend(BaseBackend):
         self._store[key] = (expireat, value)
         return True
 
+    def replace(self, key, value, ttl=None):
+        if key not in self._store:
+            return False
+        expireat = self._normalize_ttl(ttl)
+        self._store[key] = (expireat, value)
+        return True
+
     def get(self, key):
         try:
             expireat, value = self._store[key]
@@ -226,7 +244,11 @@ class RedisBackend(BaseBackend):
 
     def set(self, key, value, ttl=None):
         ttl = self._normalize_ttl(ttl)
-        return self._client.set(key, value, ex=ttl)
+        return bool(self._client.set(key, value, ex=ttl))
+
+    def replace(self, key, value, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        return bool(self._client.set(key, value, ex=ttl, xx=True))
 
     def get(self, key):
         return to_bytes(self._client.get(key))
@@ -298,6 +320,12 @@ class MemcachedBackend(BaseBackend):
             return False
         ttl = self._normalize_ttl(ttl)
         return self._client.set(key, value, ttl)
+
+    def replace(self, key, value, ttl=None):
+        if self._key_invalid(key):
+            return False
+        ttl = self._normalize_ttl(ttl)
+        return self._client.replace(key, value, ttl)
 
     def get(self, key):
         if self._key_invalid(key):
