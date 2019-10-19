@@ -129,7 +129,7 @@ class BaseBackend(object):  # pragma: no cover
         :returns: Whether all given keys have been deleted.
         :rtype: boolean
         """
-        return all([self.delete(k) for k in keys])
+        return all(self.delete(k) for k in keys)
 
     def has(self, key):
         """Checks if a key exists in the cache without returning it. This is a
@@ -141,7 +141,39 @@ class BaseBackend(object):  # pragma: no cover
         """
         raise NotImplementedError
 
-    # TODO(leosocy): support incr/decr add(many)/replace(many)
+    def incr(self, key, delta=1, ttl=None):
+        """Increments the value of a key by `delta`. If the key key does
+        not exist, its value will be initialized to 0 first, and
+        then the `incr` will be executed again.
+
+        For supporting caches this is an atomic operation.
+
+        :param key: the key to increment.
+        :param delta: the delta to add.
+        :param ttl: the cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 indicates that the cache never expires.
+        :returns: The new value or ``None`` for backend errors.
+        """
+        value = int(self.get(key) or 0) + delta
+        return value if self.set(key, value, ttl) else None
+
+    def decr(self, key, delta=1, ttl=None):
+        """Decrements the value of a key by `delta`.  If the key key does
+        not exist, its value will be initialized to 0 first, and
+        then the `decr` will be executed again.
+
+        For supporting caches this is an atomic operation.
+
+        :param key: the key to increment.
+        :param delta: the delta to subtract.
+        :param ttl: the cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 indicates that the cache never expires.
+        :returns: The new value or `None` for backend errors.
+        """
+        value = int(self.get(key) or 0) - delta
+        return value if self.set(key, value, ttl) else None
 
 
 class SimpleBackend(BaseBackend):
@@ -212,9 +244,6 @@ class SimpleBackend(BaseBackend):
 
 class RedisBackend(BaseBackend):
     """Uses the Redis key-value store as a cache backend.
-
-    Note: Python Redis API already takes care of encoding unicode strings on
-    the fly.
 
     :param host: address string of the Redis server.
     :param port: port number on which Redis server listens for connections.
@@ -299,6 +328,26 @@ class RedisBackend(BaseBackend):
 
     def has(self, key):
         return bool(self._client.exists(key))
+
+    def incr(self, key, delta=1, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        if ttl is None:
+            return self._client.incr(key, delta)
+        with self._client.pipeline() as pipe:
+            pipe.incr(key, delta)
+            pipe.expire(key, ttl)
+            values = pipe.execute()
+            return values[0]
+
+    def decr(self, key, delta=1, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        if ttl is None:
+            return self._client.decr(key, delta)
+        with self._client.pipeline() as pipe:
+            pipe.decr(key, delta)
+            pipe.expire(key, ttl)
+            values = pipe.execute()
+            return values[0]
 
 
 class MemcachedBackend(BaseBackend):

@@ -41,13 +41,16 @@ setuptools.setup(
             "pytest-cov",
             "mock",
             "coverage",
+            # flake8 extensions
             "flake8",
             "mccabe",
             "flake8-bugbear",
             "pep8-naming",
             "flake8-comprehensions",
+            # backends
             "redis>=3.0",
-            "pylibmc",
+            "pylibmc",  # dependence `libmemcached`.
+            # serializers
             "msgpack<1.0",
             "protobuf>=3.9",
         ],

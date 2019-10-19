@@ -99,6 +99,18 @@ def test_general_flow_replace_many(backend):
     assert not backend.has("bar")
 
 
+def test_general_flow_incr_decr(backend):
+    key = "foo"
+    assert backend.incr(key, ttl=0) == 1
+    assert backend.has(key)
+    assert backend.incr(key, ttl=1) == 2
+    assert backend.decr(key, ttl=1) == 1
+    time.sleep(1.1)
+    assert not backend.has(key)
+    assert backend.incr(key, delta=10) == 10
+    assert backend.decr(key, delta=11, ttl=0) == -1
+
+
 def test_simple_backend_exceeded_threshold():
     # no keys expired，randomly pop
     backend = SimpleBackend(threshold=2)
@@ -186,6 +198,7 @@ def test_memcached_backend_too_long_key_length(memcached_client):
     too_long_key = "a" * 251
     mapping = {"foo": "foo.test", too_long_key: "too_long"}
     assert memcached_backend.set(too_long_key, "too_long") is False
+    assert memcached_backend.replace(too_long_key, "too_too_long") is False
 
     rv = memcached_backend.set_many(mapping)
     assert rv["foo"] is True
