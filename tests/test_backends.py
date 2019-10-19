@@ -25,24 +25,6 @@ def test_general_flow_set_get_delete(backend):
         assert backend.delete(key) is False
 
 
-def test_general_flow_cache_expired(backend):
-    key = "foo"
-    value = "foo.test"
-    ttl = 1
-    # cache 1s, not available after 1s
-    backend.set(key, value, ttl=ttl)
-    assert backend.has(key)
-    time.sleep(1.1 * ttl)
-    assert backend.get(key) is None
-    assert not backend.has(key)
-    # cache never expires
-    backend.set(key, value, ttl=0)
-    assert backend.has(key)
-    time.sleep(1.1 * ttl)
-    assert to_bytes(value) == backend.get(key)
-    assert backend.has(key)
-
-
 def test_general_flow_set_get_delete_many(backend):
     mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
     keys = list(mapping.keys())
@@ -67,6 +49,26 @@ def test_general_flow_set_get_delete_many(backend):
         assert not backend.has(k)
 
 
+def test_general_flow_cache_expired(backend):
+    key = "foo"
+    value = "foo.test"
+    ttl = 1
+    # cache 1s, not available after 1s
+    backend.set(key, value, ttl=ttl)
+    backend.set_many({"bar": "bar.test", "baz": "baz.test"}, ttl=ttl)
+    assert backend.has(key)
+    assert backend.has("baz")
+    time.sleep(1.1 * ttl)
+    assert backend.get(key) is None
+    assert backend.get("bar") is None
+    # cache never expires
+    backend.set(key, value, ttl=0)
+    assert backend.has(key)
+    time.sleep(1.1 * ttl)
+    assert to_bytes(value) == backend.get(key)
+    assert backend.has(key)
+
+
 def test_general_flow_replace(backend):
     key = "foo"
     value = "foo.test"
@@ -79,6 +81,22 @@ def test_general_flow_replace(backend):
     assert backend.has(key)
     time.sleep(1.1)
     assert not backend.has(key)  # assert ttl has been update to 1
+
+
+def test_general_flow_replace_many(backend):
+    year_ttl = 365 * 24 * 60 * 60
+    mapping = {"foo": "foo.test", "bar": "bar.test", "baz": "baz.test"}
+    keys = list(mapping.keys())
+    assert backend.replace_many(mapping) == {k: False for k in keys}
+    assert not backend.has("foo")
+    backend.set("foo", mapping["foo"], ttl=year_ttl)
+    rv = backend.replace_many(mapping, ttl=1)
+    assert rv["foo"] is True
+    assert rv["bar"] == rv["baz"] is False
+    assert backend.has("foo")
+    assert not backend.has("bar")
+    time.sleep(1.1)
+    assert not backend.has("bar")
 
 
 def test_simple_backend_exceeded_threshold():

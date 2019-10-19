@@ -82,6 +82,20 @@ class BaseBackend(object):  # pragma: no cover
         """
         return {k: self.set(k, v, ttl) for k, v in mapping.items()}
 
+    def replace_many(self, mapping, ttl=None):
+        """Replaces multiple keys and values from a mapping.
+
+        :param mapping: a mapping with the keys/values to replace.
+        :param ttl: the cache ttl for the key in seconds (if not
+                    specified, it uses the default ttl). A ttl of
+                    0 indicates that the cache never expires.
+        :returns: A dict, the keys is the keys in the mapping,
+                  and the value is whether the corresponding key is replaced.
+                  ``True`` if key has been replaced, else ``False``.
+        :rtype: dict
+        """
+        return {k: self.replace(k, v, ttl) for k, v in mapping.items()}
+
     def get_many(self, *keys):
         """Returns a list of values for the given keys.
         For each key an item in the list is created.
@@ -267,6 +281,15 @@ class RedisBackend(BaseBackend):
                 pipe.set(name=key, value=mapping[key], ex=ttl)
             values = pipe.execute()
             return dict(zip(keys, values))
+
+    def replace_many(self, mapping, ttl=None):
+        ttl = self._normalize_ttl(ttl)
+        with self._client.pipeline() as pipe:
+            keys = list(mapping.keys())
+            for key in keys:
+                pipe.set(name=key, value=mapping[key], ex=ttl, xx=True)
+            values = pipe.execute()
+            return dict(zip(keys, map(bool, values)))
 
     def get_many(self, *keys):
         return [to_bytes(v) for v in self._client.mget(keys)]
