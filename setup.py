@@ -47,11 +47,11 @@ setuptools.setup(
             "pep8-naming",
             "flake8-comprehensions",
             "redis>=3.0",
-            "libmc>=1.3.0",
+            "pylibmc",
             "msgpack<1.0",
             "protobuf>=3.9",
         ],
-        "backends": ["redis>=3.0", "libmc>=1.3.0"],
+        "backends": ["redis>=3.0", "pylibmc"],
         "serializers": ["msgpack>=0.6,<1.0", "protobuf>=3.9"],
     },
 )

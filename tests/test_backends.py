@@ -1,7 +1,6 @@
 import time
 
 import mock
-import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 from cacheorm.types import to_bytes
 
@@ -14,15 +13,16 @@ def test_general_flow_set_get_delete(backend):
     year_ttl = 365 * 24 * 60 * 60
     for value in values:
         assert backend.get(key) is None
-        assert not backend.has(key)
-        assert backend.set(key, value, ttl=year_ttl)
+        assert backend.has(key) is False
+        assert backend.set(key, value, ttl=year_ttl) is True
         assert to_bytes(value) == backend.get(key)
-        assert backend.has(key)
+        assert backend.has(key) is True
         new_value = bytes("foo.test.new", encoding="utf-8")
         backend.set(key, new_value)
         assert new_value == backend.get(key)
-        assert backend.delete(key)
-        assert not backend.has(key)
+        assert backend.delete(key) is True
+        assert backend.has(key) is False
+        assert backend.delete(key) is False
 
 
 def test_general_flow_cache_expired(backend):
@@ -50,7 +50,9 @@ def test_general_flow_set_get_delete_many(backend):
     assert len(mapping) == len(values)
     for v in values:
         assert v is None
-    assert backend.set_many(mapping)
+    rv = backend.set_many(mapping)
+    for k in keys:
+        assert rv[k] is True
     assert list(map(to_bytes, mapping.values())) == backend.get_many(*keys)
     for k in keys:
         assert backend.has(k)
@@ -59,7 +61,8 @@ def test_general_flow_set_get_delete_many(backend):
     values = backend.get_many(*keys, "unknown")
     assert len(mapping) + 1 == len(values)
     assert values[-1] is None
-    assert backend.delete_many(*keys)
+    assert backend.delete_many(*keys[:2]) is True
+    assert backend.delete_many(keys[-1], "unknown") is False
     for k in keys:
         assert not backend.has(k)
 
@@ -95,11 +98,11 @@ def test_redis_backend_get_set_delete_many_once_io(redis_client):
     with mock.patch.object(
         redis_client, "execute_command", wraps=redis_client.execute_command
     ) as mock_execute:
-        # use `MSET` when no ttl, use `Pipeline` when ttl > 0
+        # use `MSET` when no ttl == 0, use `Pipeline` when ttl > 0
         assert redis_backend.set_many(mapping, ttl=0)
         mock_execute.assert_called_once()
     with mock.patch.object(
-        redis_client, "pipeline", waraps=redis_client.pipeline
+        redis_client, "pipeline", wraps=redis_client.pipeline
     ) as mock_pipeline:
         assert redis_backend.set_many(mapping, ttl=600)
         mock_pipeline.assert_called_once()
@@ -110,7 +113,7 @@ def test_redis_backend_get_set_delete_many_once_io(redis_client):
         assert list(map(to_bytes, mapping.values())) == rv
         mock_execute.assert_called_once()
         mock_execute.reset_mock()
-        redis_backend.delete_many(*mapping.keys())
+        assert redis_backend.delete_many(*mapping.keys()) is True
         mock_execute.assert_called_once()
         for key in mapping:
             assert not redis_backend.has(key)
@@ -150,16 +153,18 @@ def test_memcached_backend_too_long_key_length(memcached_client):
     memcached_backend = MemcachedBackend(client=memcached_client)
     too_long_key = "a" * 251
     mapping = {"foo": "foo.test", too_long_key: "too_long"}
-    with pytest.raises(Exception):
-        assert memcached_backend.set(too_long_key, "too_long")
-    with pytest.raises(Exception):
-        assert memcached_backend.set_many(mapping)
-    memcached_backend.set("foo", "foo.test")
+    assert memcached_backend.set(too_long_key, "too_long") is False
+
+    rv = memcached_backend.set_many(mapping)
+    assert rv["foo"] is True
+    assert rv[too_long_key] is False
+
     assert memcached_backend.get(too_long_key) is None
     rv = memcached_backend.get_dict(*mapping.keys())
     assert rv[too_long_key] is None
     assert rv["foo"]
-    assert not memcached_backend.has(too_long_key)
-    assert not memcached_backend.delete(too_long_key)
-    assert not memcached_backend.delete_many(*mapping.keys())
-    assert not memcached_backend.has("foo")
+
+    assert memcached_backend.has(too_long_key) is False
+    assert memcached_backend.delete(too_long_key) is False
+    assert memcached_backend.delete_many(*mapping.keys()) is False
+    assert memcached_backend.has("foo") is False

@@ -30,20 +30,21 @@ class BaseBackend(object):  # pragma: no cover
         :param value: the value for the key
         :param ttl: the cache ttl for the key in seconds (if not
                     specified, it uses the default ttl). A ttl of
-                    0 idicates that the cache never expires.
+                    0 indicates that the cache never expires.
         :returns: ``True`` if key has been updated, ``False`` for backend
                   errors.
         :rtype: boolean
         """
         return True
 
-    # TODO(leosocy): support add/replace
+    def replace(self, key, value, ttl=None):
+        pass
 
     def get(self, key):
         """Look up key in the cache and return the value for it.
 
         :param key: the key to be looked up.
-        :returns: The value if it exists and is readable, else ``None``.
+        :returns: The bytes(value) if it exists and is readable, else ``None``.
         """
         return None
 
@@ -62,8 +63,9 @@ class BaseBackend(object):  # pragma: no cover
         :param mapping: a mapping with the keys/values to set.
         :param ttl: the cache ttl for the key in seconds (if not
                     specified, it uses the default ttl). A ttl of
-                    0 idicates that the cache never expires.
-        :returns: A dict of mapping.keys, for each value
+                    0 indicates that the cache never expires.
+        :returns: A dict, the keys is the keys in the mapping,
+                  and the value is whether the corresponding key is updated.
                   ``True`` if key has been updated, else ``False``
         :rtype: dict
         """
@@ -71,15 +73,13 @@ class BaseBackend(object):  # pragma: no cover
 
     def get_many(self, *keys):
         """Returns a list of values for the given keys.
-        For each key an item in the list is created::
+        For each key an item in the list is created.
 
             foo, bar = cache.get_many("foo", "bar")
 
         Has the same error handling as :meth:`get`.
 
         :param keys: The function accepts multiple keys as positional arguments.
-        :returns: A list of values, for each value
-                ``True`` if it exists and is readable, else ``None``.
         :rtype: list
         """
         return [self.get(k) for k in keys]
@@ -101,11 +101,10 @@ class BaseBackend(object):  # pragma: no cover
 
         :param keys: The function accepts multiple keys as positional
                      arguments.
-        :returns: A list of boolean for the given keys
-                  ``True`` if the key existed and has been deleted, else ``False``
-        :rtype: list
+        :returns: Whether all given keys have been deleted.
+        :rtype: boolean
         """
-        return [self.delete(k) for k in keys]
+        return all([self.delete(k) for k in keys])
 
     def has(self, key):
         """Checks if a key exists in the cache without returning it. This is a
@@ -180,6 +179,23 @@ class SimpleBackend(BaseBackend):
 
 
 class RedisBackend(BaseBackend):
+    """Uses the Redis key-value store as a cache backend.
+
+    Note: Python Redis API already takes care of encoding unicode strings on
+    the fly.
+
+    :param host: address string of the Redis server.
+    :param port: port number on which Redis server listens for connections.
+    :param password: password authentication for the Redis server.
+    :param db: db (zero-based numeric index) on Redis Server to connect.
+    :param client: an object resembling an instance of a redis.Redis class.
+    :param default_ttl: the default ttl that is used if no ttl is
+                            specified on :meth:`~BaseBackend.set`. A ttl of
+                            0 indicates that the cache never expires.
+
+    Any additional keyword arguments will be passed to ``redis.Redis``.
+    """
+
     def __init__(
         self,
         host="localhost",
@@ -216,36 +232,57 @@ class RedisBackend(BaseBackend):
         return to_bytes(self._client.get(key))
 
     def delete(self, key):
-        return self._client.delete(key)
+        return bool(self._client.delete(key))
 
     def set_many(self, mapping, ttl=None):
         ttl = self._normalize_ttl(ttl)
         if ttl is None:
-            return self._client.mset(mapping)
+            self._client.mset(mapping)
+            return {k: True for k in mapping}
         with self._client.pipeline() as pipe:
-            for key, value in mapping.items():
-                pipe.setex(name=key, value=value, time=ttl)
-            return pipe.execute()
+            keys = list(mapping.keys())
+            for key in keys:
+                pipe.set(name=key, value=mapping[key], ex=ttl)
+            values = pipe.execute()
+            return dict(zip(keys, values))
 
     def get_many(self, *keys):
         return [to_bytes(v) for v in self._client.mget(keys)]
 
     def delete_many(self, *keys):
-        return self._client.delete(*keys)
+        return self._client.delete(*keys) == len(keys)
 
     def has(self, key):
-        return self._client.exists(key)
+        return bool(self._client.exists(key))
 
 
 class MemcachedBackend(BaseBackend):
+    """A cache that uses memcached as backend.
+
+    Implementation notes: All methods have processed the key over 250 characters,
+    ensure that no errors will be thrown, ignoring the operation of illegal keys.
+
+    :param servers: a list or tuple of server addresses or alternatively
+                    a :class:`memcache.Client` or a compatible client.
+    :param client: an object that resembles the API of a :class:`memcache.Client`
+                   or a compatible client.
+    :param default_ttl: the default ttl that is used if no ttl is
+                            specified on :meth:`~BaseBackend.set`. A ttl of
+                            0 indicates that the cache never expires.
+    """
+
     KEY_MAX_LENGTH = 250
 
     def __init__(self, servers=(("localhost", 11211),), client=None, default_ttl=600):
         super(MemcachedBackend, self).__init__(default_ttl)
         if client is None:
-            self._client = MemcachedBackend._import_preferred_mc_lib(servers)
-            if self._client is None:  # pragma: no cover
+            try:
+                import pylibmc
+            except ImportError:  # pragma: no cover
                 raise ModuleNotFoundError("no memcached module found")
+            self._client = pylibmc.Client(
+                ["{}:{}".format(*server) for server in servers]
+            )
         else:
             self._client = client
 
@@ -257,6 +294,8 @@ class MemcachedBackend(BaseBackend):
         return ttl
 
     def set(self, key, value, ttl=None):
+        if self._key_invalid(key):
+            return False
         ttl = self._normalize_ttl(ttl)
         return self._client.set(key, value, ttl)
 
@@ -271,27 +310,26 @@ class MemcachedBackend(BaseBackend):
         return self._client.delete(key)
 
     def set_many(self, mapping, ttl=None):
-        ttl = self._normalize_ttl(ttl)
-        failed_keys = self._client.set_multi(mapping, ttl)
-        # return `True` if success in libmc
-        # return failed_keys list in other libraries.
-        return failed_keys if isinstance(failed_keys, bool) else not failed_keys
+        valid_mapping = {k: v for k, v in mapping.items() if not self._key_invalid(k)}
+        failed_keys = []
+        if valid_mapping:
+            ttl = self._normalize_ttl(ttl)
+            failed_keys = self._client.set_multi(valid_mapping, ttl)
+        return {k: k in valid_mapping and k not in failed_keys for k in mapping}
 
     def get_many(self, *keys):
         mapping = self.get_dict(*keys)
         return [mapping[key] for key in keys]
 
     def get_dict(self, *keys):
-        valid_keys, _ = self._filter_valid_keys(*keys)
+        valid_keys = [k for k in keys if not self._key_invalid(k)]
         mapping = self._client.get_multi(valid_keys)
         return {key: to_bytes(mapping.get(key, None)) for key in keys}
 
     def delete_many(self, *keys):
-        valid_keys, filtered = self._filter_valid_keys(*keys)
+        valid_keys = [k for k in keys if not self._key_invalid(k)]
         rv = self._client.delete_multi(valid_keys)
-        if filtered:
-            return False
-        return rv
+        return len(valid_keys) == len(keys) and rv
 
     def has(self, key):
         if self._key_invalid(key):
@@ -299,47 +337,5 @@ class MemcachedBackend(BaseBackend):
         return self._client.append(key, b"")
 
     @staticmethod
-    def _import_preferred_mc_lib(servers):  # pragma: no cover
-        """
-        Looks into the following packages/modules to find bindings for memcached:
-
-        - ``libmc``
-        - ``pylibmc``
-        - ``pymemcache``
-        """
-        try:
-            import libmc
-        except ImportError:
-            pass
-        else:
-            return libmc.Client(["{}:{}".format(*server) for server in servers])
-
-        try:
-            import pylibmc
-        except ImportError:
-            pass
-        else:
-            return pylibmc.Client(["{}:{}".format(*server) for server in servers])
-
-        try:
-            import pymemcache
-        except ImportError:
-            pass
-        else:
-            return pymemcache.Client(servers[0], default_noreply=False)
-
-    @staticmethod
     def _key_invalid(key):
-        if len(key) > MemcachedBackend.KEY_MAX_LENGTH:
-            return True
-
-    @staticmethod
-    def _filter_valid_keys(*keys):
-        rv = []
-        filtered = False
-        for key in keys:
-            if MemcachedBackend._key_invalid(key):
-                filtered = True
-                continue
-            rv.append(key)
-        return rv, filtered
+        return len(key) > MemcachedBackend.KEY_MAX_LENGTH
