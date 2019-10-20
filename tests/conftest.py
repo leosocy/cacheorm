@@ -38,12 +38,11 @@ def memcached_client_args():
 
 @pytest.fixture()
 def memcached_client(memcached_client_args):
-    import libmc
+    import pylibmc
 
-    client = libmc.Client(
+    client = pylibmc.Client(
         ["{}:{}".format(*s) for s in memcached_client_args["servers"]]
     )
-    client.toggle_flush_all_feature(True)
     client.flush_all()
     yield client
     client.flush_all()
