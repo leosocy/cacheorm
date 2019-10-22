@@ -235,11 +235,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return ModelInsert(cls, insert)
 
     @classmethod
-    def insert_many(cls, insert_list):
+    def insert_many(cls, *insert_list):
         """
         无条件插入一批数据到backend，
-        :param insert_list:
-        [{"name": "Sam"}, Person(name="Amy"), ...]
+        :param insert_list: a list/tuple, contains element like
+        {"name": "Sam"}, Person(name="Amy"), ...
         :return: [ModelObject, ModelObject, ...]
         :rtype: list
         """
@@ -263,10 +263,10 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return ModelQuery(cls, query)
 
     @classmethod
-    def query_many(cls, query_list):
+    def query_many(cls, *query_list):
         """
         根据一批主键fields对应的values去backend查找。
-        :param query_list:
+        :param query_list: a list/tuple, contains element like
         [{"name": "Sam"}, {"name": "Amy"}, ...]
         :return: [ModelObject, None, ...]
         :rtype: list
@@ -322,10 +322,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         pass
 
     @classmethod
-    def update_many(cls, update_list):
+    def update_many(cls, *update_list):
         """
         批量覆盖backend中主键{fields: values}对应的记录。
-        :param update_list: 同insert_many
+        :param update_list: 一个list/tuple，每一个元素都是一个dict，
+               其中包含了要更新的主键值以及其他字段值
         :return: [ModelObject, None, ...]
         :rtype: list
         """
@@ -346,7 +347,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         pass
 
     @classmethod
-    def delete_many(cls, delete_list):
+    def delete_many(cls, *delete_list):
         """
         根据一批主键fields对应的values去backend删除。
         :param delete_list: 同query_many

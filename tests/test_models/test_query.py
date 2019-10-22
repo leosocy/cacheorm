@@ -6,11 +6,9 @@ import pytest
 @pytest.fixture()
 def person_data(person_model):
     persons = person_model.insert_many(
-        [
-            {"name": "Sam", "height": 178.6},
-            {"name": "Amy", "height": 167.5, "email": "Amy@gmail.com"},
-            {"name": "Daming", "height": 180, "married": True},
-        ]
+        {"name": "Sam", "height": 178.6},
+        {"name": "Amy", "height": 167.5, "email": "Amy@gmail.com"},
+        {"name": "Daming", "height": 180, "married": True},
     ).execute()
     return {p.name: p for p in persons}
 
@@ -24,7 +22,7 @@ def test_query(person_model, person_data):
 
 def test_query_many(person_model, person_data):
     persons = person_model.query_many(
-        [{"name": "Sam"}, {"name": "Daming"}, {"name": "Unknown"}]
+        {"name": "Sam"}, {"name": "Daming"}, {"name": "Unknown"}
     ).execute()
     assert len(persons) == 3
     assert persons[1] == person_data["Daming"]
@@ -32,7 +30,7 @@ def test_query_many(person_model, person_data):
 
 
 def test_query_many_empty(person_model, person_data):
-    persons = person_model.query_many([]).execute()
+    persons = person_model.query_many().execute()
     assert not persons
 
 
