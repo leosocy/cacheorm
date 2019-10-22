@@ -134,7 +134,7 @@ you need manager lock by yourself, such as with redlock.
 sam = Person.set_by_id("Sam", {"height": 178.0})
 bob = Person.get_by_id("Bob")
 bob.married = True
-bob.save(only=["married"])
+bob.save()
 note = Note.update(
     id=1, title="What's new in CacheORM?"
 ).execute()
