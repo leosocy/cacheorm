@@ -204,7 +204,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return not self.__eq__(other)
 
     def get_id(self):
-        return getattr(self, self._meta.primary_key.name)
+        return getattr(self, self._meta.primary_key.name, None)
 
     _pk = property(get_id)
 
@@ -222,7 +222,11 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         """
         # TODO(leosocy): support force_insert
         field_dict = self.__data__.copy()
-        self.insert(**field_dict).execute()
+        if self._pk is not None and not force_insert:
+            inst = self.update(**field_dict).execute()
+        else:
+            inst = self.insert(**field_dict).execute()
+        return inst is not None
 
     @classmethod
     def insert(cls, **insert):
@@ -314,12 +318,12 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def update(cls, **update):
         """
-        覆盖backend中主键{fields: values}对应的记录。
+        覆盖backend中主键{fields: values}对应的记录，该记录原有的TTL将被清除。
         :param update: 同insert
         :return: 覆盖成功则返回ModelObject；如果原记录不存在否则返回None
         :rtype: ModelObject
         """
-        pass
+        return ModelUpdate(cls, update)
 
     @classmethod
     def update_many(cls, *update_list):
@@ -330,11 +334,18 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         :return: [ModelObject, None, ...]
         :rtype: list
         """
-        pass
+        return ModelUpdate(cls, update_list)
 
     @classmethod
     def set_by_id(cls, pk, value):
-        pass
+        update = copy.deepcopy(value)
+        update.update({cls._meta.primary_key.name: pk})
+        inst = ModelUpdate(cls, update).execute()
+        if inst is None:
+            raise cls.DoesNotExist(
+                "%s instance matching query does not exist:\nQuery: %s" % (cls, pk)
+            )
+        return inst
 
     @classmethod
     def delete(cls, **delete):
@@ -367,9 +378,7 @@ class Insert(object):
         Insert inserts data list in batches, support different model.
 
         :param insert_list:
-        [Person(name="Sam"), Note(content="foo")]
-            or
-        [(Person, ({"name": "Sam"}, {"name": "Amy"})), (Note, ({"content": "foo"},))]
+        [(Person, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
         """
         self._insert_list = insert_list
 
@@ -379,11 +388,11 @@ class Insert(object):
         for model, index, payload in self._generate_insert(self._insert_list):
             meta = model._meta
             primary_key_index = model._index_manager.get_primary_key_index()
-            instances.append(model(**index, **payload))
             cache_key = primary_key_index.make_cache_key(**index)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
                 payload
             )
+            instances.append(model(**index, **payload))
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
         return instances
@@ -482,6 +491,74 @@ class Query(object):
                 yield model, index
 
 
+class Update(object):
+    def __init__(self, update_list):
+        """
+        :param update_list:
+        [(Person, ({"name": "Sam", "height": 180}, {"name": "Amy", "married": True})),
+         Note(id=1, content="foo", Person(name="Bob", email="bob@outlook.com")]
+        """
+        self._update_list = update_list
+
+    def execute(self):
+        original_instances = Query(self._update_list).execute()
+        instances = []
+        group_by_meta = defaultdict(dict)
+        for (model, index, payload), original_instance in zip(
+            self._generate_update(self._update_list), original_instances
+        ):
+            if original_instance is None:
+                instances.append(None)
+                continue
+            meta = model._meta
+            primary_key_index = model._index_manager.get_primary_key_index()
+            cache_key = primary_key_index.make_cache_key(**index)
+            for k, v in original_instance.__data__.items():
+                if model._meta.fields[k] not in model._meta.get_primary_key_fields():
+                    payload.update({k: v})
+            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
+                payload
+            )
+            instances.append(model(**index, **payload))
+        for (backend, ttl), mapping in group_by_meta.items():
+            backend.replace_many(mapping, ttl=ttl)
+        return instances
+
+    @staticmethod
+    def _parse_model_rows(insert):
+        if isinstance(insert, Model):
+            model = type(insert)
+            rows = (insert.__data__,)
+        elif isinstance(insert, tuple) and isinstance(insert[0], ModelBase):
+            model = insert[0]
+            rows = insert[1]
+        else:
+            raise TypeError("unsupported insert type")
+        return model, rows
+
+    @staticmethod
+    def _generate_update(update_list):
+        for update in update_list:
+            model, rows = Update._parse_model_rows(update)
+            fields_converters = [
+                (field, field.cache_value) for field in model._meta.fields.values()
+            ]
+            primary_key_fields = model._meta.get_primary_key_fields()
+            for row in rows:
+                payload = {}
+                index = {}
+                for field, converter in fields_converters:
+                    try:
+                        val = converter(row[field.name])
+                    except KeyError:
+                        continue
+                    if field in primary_key_fields:
+                        index[field.name] = val
+                    else:
+                        payload[field.name] = val
+                yield model, index, payload
+
+
 class ModelInsert(Insert):
     def __init__(self, model, insert):
         self._single = False
@@ -513,9 +590,26 @@ class ModelQuery(Query):
         elif isinstance(query, (list, tuple)):
             query_list = [(model, query)]
         else:
-            raise TypeError("unsupported insert type")
+            raise TypeError("unsupported query type")
         super(ModelQuery, self).__init__(query_list)
 
     def execute(self):
         instances = super(ModelQuery, self).execute()
+        return instances[0] if self._single else instances
+
+
+class ModelUpdate(Update):
+    def __init__(self, model, update):
+        self._single = False
+        if isinstance(update, dict):
+            self._single = True
+            update_list = [(model, (update,))]
+        elif isinstance(update, (tuple, list)):
+            update_list = [(model, update)]
+        else:
+            raise TypeError("unsupported update type")
+        super(ModelUpdate, self).__init__(update_list)
+
+    def execute(self):
+        instances = super(ModelUpdate, self).execute()
         return instances[0] if self._single else instances

@@ -31,7 +31,7 @@ def test_update(person_model):
     sam = person_model.update(name="Sam", height=180).execute()
     assert person_model.get_by_id("Sam") == sam
     with pytest.raises(ValueError, match=r"missing value"):
-        person_model.update(height=180)
+        person_model.update(height=180).execute()
 
 
 def test_update_many(person_model):
