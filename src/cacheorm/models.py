@@ -371,60 +371,54 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         pass
 
 
-class Insert(object):
-    # TODO(leosocy): support chunk_size
-    def __init__(self, insert_list):
-        """
-        Insert inserts data list in batches, support different model.
+class _InputParser(object):
+    """
+    input should be a tuple or list, format like:
+    [
+        (Person, [{"name": "Sam"}, {"name": "Amy"}]),
+        Note(content="foo"), Note(content="bar"),
+    ]
+    """
 
-        :param insert_list:
-        [(Person, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
-        """
-        self._insert_list = insert_list
-
-    def execute(self):
-        instances = []
-        group_by_meta = defaultdict(dict)
-        for model, index, payload in self._generate_insert(self._insert_list):
-            meta = model._meta
-            primary_key_index = model._index_manager.get_primary_key_index()
-            cache_key = primary_key_index.make_cache_key(**index)
-            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                payload
-            )
-            instances.append(model(**index, **payload))
-        for (backend, ttl), mapping in group_by_meta.items():
-            backend.set_many(mapping, ttl=ttl)
-        return instances
+    def __init__(self, only_index=False, skip_key_error=False):
+        self._only_index = only_index
+        self._skip_key_error = skip_key_error
 
     @staticmethod
-    def _parse_model_rows(insert):
-        if isinstance(insert, Model):
-            model = type(insert)
-            rows = (insert.__data__,)
-        elif isinstance(insert, tuple) and isinstance(insert[0], ModelBase):
-            model = insert[0]
-            rows = insert[1]
+    def _parse_to_model_rows(input):
+        if isinstance(input, Model):
+            model = type(input)
+            rows = [input.__data__]
+        elif (
+            isinstance(input, tuple)
+            and isinstance(input[0], ModelBase)
+            and isinstance(input[1], (tuple, list))
+        ):
+            model = input[0]
+            rows = input[1]
         else:
-            raise TypeError("unsupported insert type")
+            raise TypeError("unsupported input format")
         return model, rows
 
-    @staticmethod
-    def _generate_insert(insert_list):
-        for insert in insert_list:
-            model, rows = Insert._parse_model_rows(insert)
-            fields_converters = [
-                (field, field.cache_value) for field in model._meta.fields.values()
-            ]
+    def parse(self, inputs):
+        for input in inputs:
+            model, rows = self._parse_to_model_rows(input)
+            fields = (
+                model._meta.get_primary_key_fields()
+                if self._only_index
+                else model._meta.fields.values()
+            )
             defaults = model._meta.defaults
             primary_key_fields = model._meta.get_primary_key_fields()
             for row in rows:
                 payload = {}
                 index = {}
-                for field, converter in fields_converters:
+                for field in fields:
                     try:
-                        val = converter(row[field.name])
+                        val = field.cache_value(row[field.name])
                     except KeyError:
+                        if self._skip_key_error:
+                            continue
                         if field in defaults:
                             # TODO(leosocy): support callable default
                             val = defaults[field]
@@ -439,6 +433,33 @@ class Insert(object):
                 yield model, index, payload
 
 
+class Insert(object):
+    # TODO(leosocy): support chunk_size
+    def __init__(self, insert_list):
+        """
+        Insert inserts data list in batches, support different model.
+
+        :param insert_list:
+        [(Person, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
+        """
+        self._insert_list = insert_list
+
+    def execute(self):
+        instances = []
+        group_by_meta = defaultdict(dict)
+        for model, index, payload in _InputParser().parse(self._insert_list):
+            meta = model._meta
+            primary_key_index = model._index_manager.get_primary_key_index()
+            cache_key = primary_key_index.make_cache_key(**index)
+            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
+                payload
+            )
+            instances.append(model(**index, **payload))
+        for (backend, ttl), mapping in group_by_meta.items():
+            backend.set_many(mapping, ttl=ttl)
+        return instances
+
+
 class Query(object):
     def __init__(self, query_list):
         """
@@ -451,7 +472,7 @@ class Query(object):
     def execute(self):
         instances = []
         group_by_backend = defaultdict(list)
-        for model, index in self._generate_query(self._query_list):
+        for model, index, _ in _InputParser(only_index=True).parse(self._query_list):
             group_by_backend[model._meta.backend].append((model, index))
         for backend, pairs in group_by_backend.items():
             cache_keys = []
@@ -470,26 +491,6 @@ class Query(object):
                     instances.append(None)
         return instances
 
-    @staticmethod
-    def _generate_query(query_list):
-        for query in query_list:
-            model, rows = query
-            defaults = model._meta.defaults
-            primary_key_fields = model._meta.get_primary_key_fields()
-            for row in rows:
-                index = {}
-                for field in primary_key_fields:
-                    converter = field.cache_value
-                    try:
-                        val = converter(row[field.name])
-                    except KeyError:
-                        if field in defaults:
-                            val = defaults[field]
-                        else:
-                            raise ValueError("missing value for '%s'." % field)
-                    index[field.name] = val
-                yield model, index
-
 
 class Update(object):
     def __init__(self, update_list):
@@ -505,7 +506,8 @@ class Update(object):
         instances = []
         group_by_meta = defaultdict(dict)
         for (model, index, payload), original_instance in zip(
-            self._generate_update(self._update_list), original_instances
+            _InputParser(skip_key_error=True).parse(self._update_list),
+            original_instances,
         ):
             if original_instance is None:
                 instances.append(None)
@@ -523,40 +525,6 @@ class Update(object):
         for (backend, ttl), mapping in group_by_meta.items():
             backend.replace_many(mapping, ttl=ttl)
         return instances
-
-    @staticmethod
-    def _parse_model_rows(insert):
-        if isinstance(insert, Model):
-            model = type(insert)
-            rows = (insert.__data__,)
-        elif isinstance(insert, tuple) and isinstance(insert[0], ModelBase):
-            model = insert[0]
-            rows = insert[1]
-        else:
-            raise TypeError("unsupported insert type")
-        return model, rows
-
-    @staticmethod
-    def _generate_update(update_list):
-        for update in update_list:
-            model, rows = Update._parse_model_rows(update)
-            fields_converters = [
-                (field, field.cache_value) for field in model._meta.fields.values()
-            ]
-            primary_key_fields = model._meta.get_primary_key_fields()
-            for row in rows:
-                payload = {}
-                index = {}
-                for field, converter in fields_converters:
-                    try:
-                        val = converter(row[field.name])
-                    except KeyError:
-                        continue
-                    if field in primary_key_fields:
-                        index[field.name] = val
-                    else:
-                        payload[field.name] = val
-                yield model, index, payload
 
 
 class ModelInsert(Insert):
@@ -613,3 +581,11 @@ class ModelUpdate(Update):
     def execute(self):
         instances = super(ModelUpdate, self).execute()
         return instances[0] if self._single else instances
+
+
+# NOTE(leosocy):
+#  1. IndexSelector 根据query，生成所有匹配的indexes，交给调用者决定如何使用索引。
+#  2. Where 根据index及传入的query，分离index string以及剩余的payload。其中index需要包括convert(cache_value)逻辑。
+#  3. Payloader to_cache, from_cache。
+#   - 根据传入的query，调用cache_value生成需要保存到cache backend的值。
+#   - 根据传入的bytes，调用python_value生成dict。
