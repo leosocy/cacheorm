@@ -17,15 +17,16 @@
 ### Methods
 
 - `set(key, value)`
+- `replace(key, value)`
 - `get(key)`
 - `delete(key)`
 - `set_many(mapping)`
+- `replace_many(mapping)`
 - `get_many(*keys)`
 - `delete_many(*keys)`
 - `has(key)`
+- `incr/decr(key, delta)`
 - TODO: `add(key value)`: Store this data, only if it does not already exist.
-- TODO: `replace(key, value)`: Store this data, but only if the data already exists.
-- TODO: `incr/decr(key)`
 
 ## Serializer
 
@@ -80,6 +81,7 @@ class Note(co.Model):
 class Collection(co.Model):
     collector = co.StringField()
     note_id = co.IntegerField()
+    remark = co.StringField(default="")
 
     class Meta:
         primary_key = co.CompositeField("collector", "note_id", index_formatter="collection.%s.%d")
@@ -94,16 +96,61 @@ class Collection(co.Model):
 - serializer
 - ttl
 
-### Create
+### Insert
 
 ```python
 sam = Person.create(name="Sam", height=178.8, emial="sam@gmail.com")
-bob = Person.create(name="Bob", height=182.4, emial="Bob@gmail.com")
-note = Note.create(author=sam, title="CacheORM", content="Create a note using cacheorm.")
-Collection.create(collector=bob, note_id=note.id)
+bob = Person.insert(name="Bob", height=182.4, emial="Bob@gmail.com").execute()
+note = Note(author=sam, title="CacheORM", content="Create a note using cacheorm.")
+note.save(force_insert=True)
+collections = Collection.insert_many(
+    {"collector": "Bob","note_id": note.id},
+    Collection(collector=sam, note_id=note.id)
+).execute()
 ```
 
-### Get
+### Query
+
+```python
+sam = Person.get(name="Sam")
+bob = Person.get_by_id("Bob")
+note = Note.query(id=1).execute()
+collections = Collection.query_many(
+    {"collector": "Bob","note_id": note.id},
+    {"collector": "Sam","note_id": note.id},
+).execute()
+```
+
+### Update
+
+Like `insert`, but only update field values when key exists.
+Support for updating partial field values.
+
+Note that the Cache Backend is not atomic for update operations,
+so if you want to guarantee atomicity,
+you need manager lock by yourself, such as with redlock.
+
+```python
+sam = Person.set_by_id("Sam", {"height": 178.0})
+bob = Person.get_by_id("Bob")
+bob.married = True
+bob.save()
+note = Note.update(
+    id=1, title="What's new in CacheORM?"
+).execute()
+collections = Collection.update_many(
+    {"collector": "Bob","note_id": note.id, "remark": "mark"},
+    {"collector": "Sam","note_id": note.id, "remark": "Good"},
+).execute()
+```
+
+### Delete
+
+## ModelHelper
+
+### Insert
+
+### Query
 
 ### Update
 

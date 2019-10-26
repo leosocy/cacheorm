@@ -7,7 +7,7 @@ from cacheorm.fields import IntegerField, StringField
 def test_create(person_model):
     amy = person_model.create(name="Amy", height=167.5, email="Amy@gmail.com")
     sam = person_model(name="Sam", height=178.6, married=True)
-    sam.save()
+    sam.save(force_insert=True)
     assert amy != sam
     got_amy = person_model.get_by_id("Amy")
     assert got_amy == amy
@@ -78,7 +78,7 @@ def test_insert_many(person_model):
         "set_many",
         wraps=person_model._meta.backend.set_many,
     ) as mock_set_many:
-        insts = person_model.insert_many(rows).execute()
+        insts = person_model.insert_many(*rows).execute()
         assert insts[0] == person_model.get_by_id("Sam")
         assert insts[1] == person_model.get_by_id("Amy")
         mock_set_many.assert_called_once()
@@ -93,5 +93,5 @@ def test_insert_many_empty(person_model):
         "set_many",
         wraps=person_model._meta.backend.set_many,
     ) as mock_set_many:
-        person_model.insert_many([])
+        person_model.insert_many()
         mock_set_many.assert_not_called()

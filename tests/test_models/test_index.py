@@ -1,6 +1,7 @@
 import pytest
+from cacheorm import IndexManager
 from cacheorm.fields import StringField
-from cacheorm.models import IndexManager, PrimaryKeyIndex
+from cacheorm.index import PrimaryKeyIndex
 
 
 def test_primary_key_index_default_formatter(noop_person_model):
