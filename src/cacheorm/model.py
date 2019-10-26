@@ -2,7 +2,7 @@ import copy
 from collections import defaultdict
 
 from .fields import Field, FieldAccessor, IntegerField
-from .index import IndexManager
+from .index import IndexManager, IndexMatcher
 from .types import with_metaclass
 
 
@@ -352,19 +352,21 @@ class _InputParser(object):
             raise TypeError("unsupported input format")
         return model, rows
 
-    def parse(self, inputs):
+    def parse(self, inputs):  # noqa
         for input in inputs:
             model, rows = self._parse_to_model_rows(input)
-            fields = (
-                model._meta.get_primary_key_fields()
-                if self._only_index
-                else model._meta.fields.values()
-            )
+            matcher = IndexMatcher(model)
             defaults = model._meta.defaults
-            primary_key_fields = model._meta.get_primary_key_fields()
             for row in rows:
-                payload = {}
-                index = {}
+                indexes = matcher.match_indexes_for(**row)
+                if not indexes:
+                    raise ValueError("can't match any index for row %s" % row)
+                index = matcher.select_index(indexes)
+                fields = (
+                    index.fields if self._only_index else model._meta.fields.values()
+                )
+                payload_dict = {}
+                index_dict = {}
                 for field in fields:
                     try:
                         val = field.cache_value(row[field.name])
@@ -378,11 +380,11 @@ class _InputParser(object):
                             continue
                         else:
                             raise ValueError("missing value for '%s'." % field)
-                    if field in primary_key_fields:
-                        index[field.name] = val
+                    if field in index.fields:
+                        index_dict[field.name] = val
                     else:
-                        payload[field.name] = val
-                yield model, index, payload
+                        payload_dict[field.name] = val
+                yield model, index_dict, payload_dict
 
 
 class Insert(object):
@@ -479,60 +481,38 @@ class Update(object):
         return instances
 
 
-class ModelInsert(Insert):
-    def __init__(self, model, insert):
+class _ModelOpHelper(object):
+    def __init__(self, model, rows):
         self._single = False
-        insert_list = []
-        if isinstance(insert, dict):
+        row_list = []
+        if isinstance(rows, dict):
             self._single = True
-            insert_list.append((model, (insert,)))
-        elif isinstance(insert, (list, tuple)):
-            for ele in insert:
-                if isinstance(ele, dict):
-                    insert_list.append((model, (ele,)))
-                elif isinstance(ele, model):
-                    insert_list.append(ele)
+            row_list.append((model, (rows,)))
+        elif isinstance(rows, (list, tuple)):
+            for row in rows:
+                if isinstance(row, dict):
+                    row_list.append((model, (row,)))
+                elif isinstance(row, model):
+                    row_list.append(row)
         else:
-            raise TypeError("unsupported insert type")
-        super(ModelInsert, self).__init__(insert_list)
+            raise TypeError("unsupported rows type")
+        super(_ModelOpHelper, self).__init__(row_list)
 
     def execute(self):
-        instances = super(ModelInsert, self).execute()
+        instances = super(_ModelOpHelper, self).execute()
         return instances[0] if self._single else instances
 
 
-class ModelQuery(Query):
-    def __init__(self, model, query):
-        self._single = False
-        if isinstance(query, dict):
-            self._single = True
-            query_list = [(model, (query,))]
-        elif isinstance(query, (list, tuple)):
-            query_list = [(model, query)]
-        else:
-            raise TypeError("unsupported query type")
-        super(ModelQuery, self).__init__(query_list)
-
-    def execute(self):
-        instances = super(ModelQuery, self).execute()
-        return instances[0] if self._single else instances
+class ModelInsert(_ModelOpHelper, Insert):
+    pass
 
 
-class ModelUpdate(Update):
-    def __init__(self, model, update):
-        self._single = False
-        if isinstance(update, dict):
-            self._single = True
-            update_list = [(model, (update,))]
-        elif isinstance(update, (tuple, list)):
-            update_list = [(model, update)]
-        else:
-            raise TypeError("unsupported update type")
-        super(ModelUpdate, self).__init__(update_list)
+class ModelQuery(_ModelOpHelper, Query):
+    pass
 
-    def execute(self):
-        instances = super(ModelUpdate, self).execute()
-        return instances[0] if self._single else instances
+
+class ModelUpdate(_ModelOpHelper, Update):
+    pass
 
 
 # NOTE(leosocy):

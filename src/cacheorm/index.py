@@ -34,26 +34,34 @@ class PrimaryKeyIndex(Index):
 class IndexManager(object):
     def __init__(self, model):
         self.model = model
-        self.indexes = {}
+        self.indexes = []
 
     def _generate_indexes(self):
         primary_key = self.model._meta.primary_key
-        self.indexes[(primary_key,)] = PrimaryKeyIndex(
-            self.model, formatter=primary_key.index_formatter
+        self.indexes.append(
+            PrimaryKeyIndex(self.model, formatter=primary_key.index_formatter)
         )
 
     def get_primary_key_index(self):
-        return self.get_index(self.model._meta.primary_key)
-
-    def get_index(self, *fields):
-        return self.indexes.get(tuple(fields), None)
+        return self.indexes[0]
 
 
-class IndexSelector(object):
+class IndexMatcher(object):
     def __init__(self, model):
         self._model = model
         self._indexes = model._index_manager.indexes
 
-    @staticmethod
-    def select_index_for(indexes, query):
-        pass
+    def match_indexes_for(self, **query):
+        query_keys = set(query.keys())
+        matched = []
+        for index in self._indexes:
+            if index.field_names - query_keys:
+                continue
+            matched.append(index)
+        return matched
+
+    def select_index(self, indexes):
+        for index in indexes:
+            if isinstance(index, PrimaryKeyIndex):
+                return index
+        return indexes[0]

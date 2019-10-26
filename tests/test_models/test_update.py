@@ -30,7 +30,7 @@ def test_update(person_model):
     person_model.create(name="Sam", height=178.6, married=True)
     sam = person_model.update(name="Sam", height=180).execute()
     assert person_model.get_by_id("Sam") == sam
-    with pytest.raises(ValueError, match=r"missing value"):
+    with pytest.raises(ValueError):
         person_model.update(height=180).execute()
 
 
