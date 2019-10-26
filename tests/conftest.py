@@ -3,7 +3,7 @@ import os
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
 from cacheorm.fields import BooleanField, FloatField, IntegerField, StringField
-from cacheorm.models import Model
+from cacheorm.model import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
     SerializerRegistry,
