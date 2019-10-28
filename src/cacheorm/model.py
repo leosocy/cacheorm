@@ -180,6 +180,9 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
             inst = self.insert(**field_dict).execute()
         return inst is not None
 
+    def delete_instance(self):
+        return self.delete(**{self._meta.primary_key.name: self._pk}).execute()
+
     @classmethod
     def insert(cls, **insert):
         """
@@ -304,23 +307,29 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         """
         根据主键fields对应的values去backend删除。
         :param delete: 同query
-        :return: affected_rows
-        :rtype: int
+        :return: 删除成功则返回True，否则如果记录不存在则为False
+        :rtype: bool
         """
-        pass
+        return ModelDelete(cls, delete)
 
     @classmethod
     def delete_many(cls, *delete_list):
         """
         根据一批主键fields对应的values去backend删除。
         :param delete_list: 同query_many
-        :return: affected_rows
-        :rtype: int
+        :return: 全部删除成功则返回True，否则为False
+        :rtype: bool
         """
+        return ModelDelete(cls, delete_list)
 
     @classmethod
     def delete_by_id(cls, pk):
-        pass
+        deleted = ModelDelete(cls, {cls._meta.primary_key.name: pk}).execute()
+        if deleted is False:
+            raise cls.DoesNotExist(
+                "%s instance matching query does not exist:\nQuery: %s" % (cls, pk)
+            )
+        return deleted
 
 
 class _InputParser(object):
@@ -481,6 +490,22 @@ class Update(object):
         return instances
 
 
+class Delete(object):
+    def __init__(self, delete_list):
+        self._delete_list = delete_list
+
+    def execute(self):
+        group_by_backend = defaultdict(list)
+        for model, index, _ in _InputParser(only_index=True).parse(self._delete_list):
+            primary_key_index = model._index_manager.get_primary_key_index()
+            cache_key = primary_key_index.make_cache_key(**index)
+            group_by_backend[model._meta.backend].append(cache_key)
+        return all(
+            backend.delete_many(*cache_keys)
+            for backend, cache_keys in group_by_backend.items()
+        )
+
+
 class _ModelOpHelper(object):
     def __init__(self, model, rows):
         self._single = False
@@ -513,6 +538,11 @@ class ModelQuery(_ModelOpHelper, Query):
 
 class ModelUpdate(_ModelOpHelper, Update):
     pass
+
+
+class ModelDelete(_ModelOpHelper, Delete):
+    def execute(self):
+        return super(_ModelOpHelper, self).execute()
 
 
 # NOTE(leosocy):
