@@ -124,7 +124,7 @@ class ModelBase(type):
         for name, field in fields:
             cls._meta.add_field(name, field)
 
-        cls._index_manager._generate_indexes()
+        cls._index_manager.generate_indexes()
 
         exc_name = "%sDoesNotExist" % cls.__name__
         exc_attrs = {"__module__": cls.__module__}
@@ -332,7 +332,60 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return deleted
 
 
-class _InputParser(object):
+class IndexDumper(object):
+    def dump(self):
+        pass
+
+    def original(self):
+        pass
+
+
+class RowSplitterFactory(object):
+    _splitters = {}
+
+    @staticmethod
+    def create(model, index):
+        cached = RowSplitterFactory._splitters.get((model, index), None)
+        if cached is not None:
+            return cached
+        splitter = RowSplitter(model, index)
+        RowSplitterFactory._splitters[(model, index)] = splitter
+        return splitter
+
+
+class RowSplitter(object):
+    def __init__(self, model, index):
+        self._model = model
+        self._index = index
+        self._all_fields = model._meta.fields.values()
+        self._index_fields = index.fields
+        self._defaults = model._meta.defaults
+
+    def split(self, row, skip_payload=False, skip_key_error=False):
+        fields = self._index_fields if skip_payload else self._all_fields
+        index = {}
+        payload = {}
+        for field in fields:
+            try:
+                val = field.cache_value(row[field.name])
+            except KeyError:
+                if skip_key_error:
+                    continue
+                if field in self._defaults:
+                    # TODO(leosocy): support callable default
+                    val = self._defaults[field]
+                elif field.null:
+                    continue
+                else:
+                    raise ValueError("missing value for '%s'." % field)
+            if field in self._index_fields:
+                index[field.name] = val
+            else:
+                payload[field.name] = val
+        return index, payload
+
+
+class _RowScanner(object):
     """
     input should be a tuple or list, format like:
     [
@@ -340,10 +393,6 @@ class _InputParser(object):
         Note(content="foo"), Note(content="bar"),
     ]
     """
-
-    def __init__(self, only_index=False, skip_key_error=False):
-        self._only_index = only_index
-        self._skip_key_error = skip_key_error
 
     @staticmethod
     def _parse_to_model_rows(input):
@@ -361,39 +410,12 @@ class _InputParser(object):
             raise TypeError("unsupported input format")
         return model, rows
 
-    def parse(self, inputs):  # noqa
+    @staticmethod
+    def scan(inputs):
         for input in inputs:
-            model, rows = self._parse_to_model_rows(input)
-            matcher = IndexMatcher(model)
-            defaults = model._meta.defaults
+            model, rows = _RowScanner._parse_to_model_rows(input)
             for row in rows:
-                indexes = matcher.match_indexes_for(**row)
-                if not indexes:
-                    raise ValueError("can't match any index for row %s" % row)
-                index = matcher.select_index(indexes)
-                fields = (
-                    index.fields if self._only_index else model._meta.fields.values()
-                )
-                payload_dict = {}
-                index_dict = {}
-                for field in fields:
-                    try:
-                        val = field.cache_value(row[field.name])
-                    except KeyError:
-                        if self._skip_key_error:
-                            continue
-                        if field in defaults:
-                            # TODO(leosocy): support callable default
-                            val = defaults[field]
-                        elif field.null:
-                            continue
-                        else:
-                            raise ValueError("missing value for '%s'." % field)
-                    if field in index.fields:
-                        index_dict[field.name] = val
-                    else:
-                        payload_dict[field.name] = val
-                yield model, index_dict, payload_dict
+                yield model, row
 
 
 class Insert(object):
@@ -410,14 +432,20 @@ class Insert(object):
     def execute(self):
         instances = []
         group_by_meta = defaultdict(dict)
-        for model, index, payload in _InputParser().parse(self._insert_list):
+        for model, row in _RowScanner.scan(self._insert_list):
+            matcher = IndexMatcher(model)
+            indexes = matcher.match_indexes_for(**row)
+            if not indexes:
+                raise ValueError("can't match any index for row %s" % row)
+            index = matcher.select_index(indexes)
+            splitter = RowSplitterFactory.create(model, index)
+            index_data, payload_data = splitter.split(row)
             meta = model._meta
-            primary_key_index = model._index_manager.get_primary_key_index()
-            cache_key = primary_key_index.make_cache_key(**index)
+            cache_key = index.make_cache_key(**index_data)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                payload
+                payload_data
             )
-            instances.append(model(**index, **payload))
+            instances.append(model(**index_data, **payload_data))
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
         return instances
@@ -435,23 +463,30 @@ class Query(object):
     def execute(self):
         instances = []
         group_by_backend = defaultdict(list)
-        for model, index, _ in _InputParser(only_index=True).parse(self._query_list):
-            group_by_backend[model._meta.backend].append((model, index))
+        for model, row in _RowScanner.scan(self._query_list):
+            group_by_backend[model._meta.backend].append((model, row))
         for backend, pairs in group_by_backend.items():
             cache_keys = []
-            for model, index in pairs:
-                primary_key_index = model._index_manager.get_primary_key_index()
-                cache_key = primary_key_index.make_cache_key(**index)
+            for model, row in pairs:
+                matcher = IndexMatcher(model)
+                indexes = matcher.match_indexes_for(**row)
+                if not indexes:
+                    raise ValueError("can't match any index for row %s" % row)
+                index = matcher.select_index(indexes)
+                splitter = RowSplitterFactory.create(model, index)
+                index_data, _ = splitter.split(row, skip_payload=True)
+                cache_key = index.make_cache_key(**index_data)
                 cache_keys.append(cache_key)
-            for val, (model, index) in zip(backend.get_many(*cache_keys), pairs):
+                instances.append(model(**index_data))
+            for val, (idx, inst) in zip(
+                backend.get_many(*cache_keys), enumerate(instances)
+            ):
                 if val is not None:
-                    val = model._meta.serializer.loads(val)
-                    converted_row = {}
+                    val = inst._meta.serializer.loads(val)
                     for k, v in val.items():
-                        converted_row[k] = model._meta.fields[k].python_value(v)
-                    instances.append(model(**index, **converted_row))
+                        setattr(inst, k, model._meta.fields[k].python_value(v))
                 else:
-                    instances.append(None)
+                    instances[idx] = None
         return instances
 
 
@@ -468,25 +503,30 @@ class Update(object):
         original_instances = Query(self._update_list).execute()
         instances = []
         group_by_meta = defaultdict(dict)
-        for (model, index, payload), original_instance in zip(
-            _InputParser(skip_key_error=True).parse(self._update_list),
-            original_instances,
+        for (model, row), original_instance in zip(
+            _RowScanner.scan(self._update_list), original_instances
         ):
             if original_instance is None:
                 instances.append(None)
                 continue
-            meta = model._meta
-            primary_key_index = model._index_manager.get_primary_key_index()
-            cache_key = primary_key_index.make_cache_key(**index)
+            matcher = IndexMatcher(model)
+            indexes = matcher.match_indexes_for(**row)
+            if not indexes:
+                raise ValueError("can't match any index for row %s" % row)
+            index = matcher.select_index(indexes)
             for k, v in original_instance.__data__.items():
-                if model._meta.fields[k] not in model._meta.get_primary_key_fields():
-                    payload.update({k: v})
+                if k not in index.field_names:
+                    row.update({k: v})
+            splitter = RowSplitterFactory.create(model, index)
+            index_data, payload_data = splitter.split(row)
+            meta = model._meta
+            cache_key = index.make_cache_key(**index_data)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                payload
+                payload_data
             )
-            instances.append(model(**index, **payload))
+            instances.append(model(**index_data, **payload_data))
         for (backend, ttl), mapping in group_by_meta.items():
-            backend.replace_many(mapping, ttl=ttl)
+            backend.set_many(mapping, ttl=ttl)
         return instances
 
 
@@ -496,9 +536,15 @@ class Delete(object):
 
     def execute(self):
         group_by_backend = defaultdict(list)
-        for model, index, _ in _InputParser(only_index=True).parse(self._delete_list):
-            primary_key_index = model._index_manager.get_primary_key_index()
-            cache_key = primary_key_index.make_cache_key(**index)
+        for model, row in _RowScanner.scan(self._delete_list):
+            matcher = IndexMatcher(model)
+            indexes = matcher.match_indexes_for(**row)
+            if not indexes:
+                raise ValueError("can't match any index for row %s" % row)
+            index = matcher.select_index(indexes)
+            splitter = RowSplitterFactory.create(model, index)
+            index_data, _ = splitter.split(row, skip_payload=True)
+            cache_key = index.make_cache_key(**index_data)
             group_by_backend[model._meta.backend].append(cache_key)
         return all(
             backend.delete_many(*cache_keys)

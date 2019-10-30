@@ -375,7 +375,8 @@ class MemcachedBackend(BaseBackend):
             except ImportError:  # pragma: no cover
                 raise ModuleNotFoundError("no memcached module found")
             self._client = pylibmc.Client(
-                ["{}:{}".format(*server) for server in servers]
+                ["{}:{}".format(*server) for server in servers],
+                behaviors={"no_block": True, "tcp_nodelay": True},
             )
         else:
             self._client = client
