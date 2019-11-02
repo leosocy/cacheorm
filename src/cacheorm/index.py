@@ -1,6 +1,26 @@
 import itertools
 
 
+class IndexFormatter(object):
+    def __init__(self, f):
+        self._f = f
+
+    def make_cache_key(self, **query):
+        pass
+
+    @classmethod
+    def from_string_format(cls, fmt):
+        pass
+
+    @classmethod
+    def from_callable(cls, f):
+        pass
+
+    @classmethod
+    def from_default(cls, model, fields):
+        pass
+
+
 class Index(object):
     def __init__(self, model, fields, formatter=None):
         self.model = model
@@ -36,7 +56,7 @@ class IndexManager(object):
         self.model = model
         self.indexes = []
 
-    def _generate_indexes(self):
+    def generate_indexes(self):
         primary_key = self.model._meta.primary_key
         self.indexes.append(
             PrimaryKeyIndex(self.model, formatter=primary_key.index_formatter)
