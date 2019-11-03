@@ -1,3 +1,11 @@
+import uuid
+
+try:
+    import shortuuid
+except ImportError:
+    shortuuid = None
+
+
 class FieldAccessor(object):
     def __init__(self, model, field, name):
         self.model = model
@@ -19,7 +27,12 @@ class Field(object):
 
     # TODO(leosocy): support callable index_formatter
     def __init__(
-        self, null=False, default=None, primary_key=False, index_formatter=None
+        self,
+        null=False,
+        default=None,
+        primary_key=False,
+        index_formatter=None,
+        **kwargs
     ):
         self.null = null
         self.default = default
@@ -52,6 +65,41 @@ class Field(object):
 
     def python_value(self, value):
         return value if value is None else self.adapt(value)
+
+
+class UUIDField(Field):
+    def cache_value(self, value):
+        if isinstance(value, uuid.UUID):
+            return value.hex
+        try:
+            return uuid.UUID(value).hex
+        except:
+            return value
+
+    def python_value(self, value):
+        if isinstance(value, uuid.UUID):
+            return value
+        return uuid.UUID(value) if value is not None else None
+
+
+class ShortUUIDField(UUIDField):
+    def __init__(self, *args, **kwargs):
+        if shortuuid is None:
+            raise ImportError("shortuuid not installed!")
+        super(ShortUUIDField, self).__init__(*args, **kwargs)
+
+    def cache_value(self, value):
+        if isinstance(value, uuid.UUID):
+            return shortuuid.encode(value)
+        try:
+            return shortuuid.encode(uuid.UUID(value))
+        except:
+            return value
+
+    def python_value(self, value):
+        if isinstance(value, uuid.UUID):
+            return value
+        return shortuuid.decode(value) if value is not None else None
 
 
 class IntegerField(Field):

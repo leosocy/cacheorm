@@ -172,12 +172,13 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         :rtype: boolean
         :raise: ValueError: 缺少构造Model字段所需的值
         """
-        # TODO(leosocy): support force_insert
         field_dict = self.__data__.copy()
         if self._pk is not None and not force_insert:
             inst = self.update(**field_dict).execute()
         else:
             inst = self.insert(**field_dict).execute()
+            if inst is not None:
+                self.__data__ = copy.deepcopy(inst.__data__)
         return inst is not None
 
     def delete_instance(self):
@@ -372,8 +373,9 @@ class RowSplitter(object):
                 if skip_key_error:
                     continue
                 if field in self._defaults:
-                    # TODO(leosocy): support callable default
                     val = self._defaults[field]
+                    if callable(val):
+                        val = val()
                 elif field.null:
                     continue
                 else:
@@ -436,8 +438,9 @@ class Insert(object):
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
-                raise ValueError("can't match any index for row %s" % row)
-            index = matcher.select_index(indexes)
+                index = model._index_manager.get_primary_key_index()
+            else:
+                index = matcher.select_index(indexes)
             splitter = RowSplitterFactory.create(model, index)
             index_data, payload_data = splitter.split(row)
             meta = model._meta
