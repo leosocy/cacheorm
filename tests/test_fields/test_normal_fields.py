@@ -1,3 +1,4 @@
+import decimal
 import uuid
 
 import cacheorm as co
@@ -40,6 +41,37 @@ def test_float_field():
         for row in FloatModel.query_many({"id": f1.id}, {"id": f2.id}).execute()
     ]
     assert [(1.23, None), (4.56, 7.89)] == values
+
+
+class DecimalModel(TestModel):
+    value = co.DecimalField(decimal_places=2, auto_round=True)
+    value_up = co.DecimalField(
+        decimal_places=2, auto_round=True, rounding=decimal.ROUND_UP, null=True
+    )
+
+
+def test_decimal_field():
+    d1 = DecimalModel.create(value=decimal.Decimal("3"))
+    d2 = DecimalModel.create(value=-3.14)
+    d3 = DecimalModel.create(value=0)
+    values = [
+        (row.value, row.value_up)
+        for row in DecimalModel.query_many(
+            {"id": d1.id}, {"id": d2.id}, {"id": d3.id}
+        ).execute()
+    ]
+    assert [
+        (decimal.Decimal("3"), None),
+        (decimal.Decimal("-3.14"), None),
+        (decimal.Decimal("0"), None),
+    ] == values
+    d1 = DecimalModel.create(value=decimal.Decimal("1.2345"))
+    d2 = DecimalModel.create(value=6.789)
+    values = [
+        (row.value, row.value_up)
+        for row in DecimalModel.query_many({"id": d1.id}, {"id": d2.id}).execute()
+    ]
+    assert [(decimal.Decimal("1.23"), None), (decimal.Decimal("6.79"), None)] == values
 
 
 class BoolModel(TestModel):

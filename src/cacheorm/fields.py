@@ -1,3 +1,4 @@
+import decimal
 import uuid
 
 try:
@@ -79,7 +80,7 @@ class UUIDField(Field):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return uuid.UUID(value) if value is not None else None
+        return value if value is None else uuid.UUID(value)
 
 
 class ShortUUIDField(UUIDField):
@@ -99,7 +100,7 @@ class ShortUUIDField(UUIDField):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return shortuuid.decode(value) if value is not None else None
+        return value if value is None else shortuuid.decode(value)
 
 
 class IntegerField(Field):
@@ -110,7 +111,35 @@ class FloatField(Field):
     adapt = float
 
 
-# TODO(leosocy): DecimalField, EnumField, AutoField
+class DecimalField(FloatField):
+    def __init__(
+        self, decimal_places=5, auto_round=False, rounding=None, *args, **kwargs
+    ):
+        self.decimal_places = decimal_places
+        self.auto_round = auto_round
+        self.rounding = rounding or decimal.DefaultContext.rounding
+        super(DecimalField, self).__init__(*args, **kwargs)
+
+    def cache_value(self, value):
+        if not value:
+            if value is None:
+                return None
+            value = decimal.Decimal()
+        if self.auto_round:
+            exp = decimal.Decimal(10) ** (-self.decimal_places)
+            rounding = self.rounding
+            value = decimal.Decimal(str(value)).quantize(exp, rounding=rounding)
+        return super(DecimalField, self).cache_value(value)
+
+    def python_value(self, value):
+        if value is None:
+            return value
+        if isinstance(value, decimal.Decimal):
+            return value
+        return decimal.Decimal(str(value))
+
+
+# TODO(leosocy): EnumField, AutoField
 
 
 class BooleanField(Field):
