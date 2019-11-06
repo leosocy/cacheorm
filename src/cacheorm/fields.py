@@ -74,7 +74,7 @@ class UUIDField(Field):
             return value.hex
         try:
             return uuid.UUID(value).hex
-        except:
+        except ValueError:
             return value
 
     def python_value(self, value):
@@ -94,7 +94,7 @@ class ShortUUIDField(UUIDField):
             return shortuuid.encode(value)
         try:
             return shortuuid.encode(uuid.UUID(value))
-        except:
+        except ValueError:
             return value
 
     def python_value(self, value):
@@ -139,7 +139,7 @@ class DecimalField(FloatField):
         return decimal.Decimal(str(value))
 
 
-# TODO(leosocy): EnumField, AutoField
+# TODO(leosocy): EnumField
 
 
 class BooleanField(Field):
@@ -153,3 +153,11 @@ class StringField(Field):
         if isinstance(value, bytes):
             return value.decode(encoding="utf-8")
         return str(value)
+
+
+class CompositeKey(Field):
+    def __init__(self, *field_names, index_formatter=None, **kwargs):
+        self.field_names = field_names
+        super(CompositeKey, self).__init__(
+            primary_key=True, index_formatter=index_formatter, **kwargs
+        )

@@ -89,3 +89,51 @@ def test_boolean_field():
         ).execute()
     ]
     assert [True, False, None] == values
+
+
+class UUIDModel(TestModel):
+    data = co.UUIDField()
+    sdata = co.ShortUUIDField()
+
+
+def test_uuid_field():
+    uu = uuid.uuid4()
+    u = UUIDModel.create(data=uu, sdata=uu)
+    u_db = UUIDModel.get(id=u.id)
+    assert uu == u_db.sdata
+    # use hex string
+    uu = uuid.uuid4()
+    u = UUIDModel.create(data=uu.hex, sdata=uu.hex)
+    u_db = UUIDModel.get(id=u.id)
+    assert uu == u_db.data
+    assert uu == u_db.sdata
+
+
+class StringModel(TestModel):
+    s = co.StringField(default="")
+    b = co.StringField(null=True)
+
+
+def test_string_field():
+    s1 = StringModel.create()
+    s2 = StringModel.create(s="foo", b=b"bar")
+    values = [
+        (row.s, row.b)
+        for row in StringModel.query_many({"id": s1.id}, {"id": s2.id}).execute()
+    ]
+    assert [("", None), ("foo", "bar")] == values
+
+
+class CompositeModel(TestModel):
+    first = co.StringField()
+    last = co.StringField()
+    data = co.StringField()
+
+    class Meta:
+        primary_key = co.CompositeKey("first", "last")
+
+
+def test_composite_key():
+    c = CompositeModel.create(first="foo", last="bar", data="baz")
+    assert c.data == CompositeModel.get(first="foo", last="bar")
+    assert c.data == CompositeModel.get_by_id(("foo", "bar"))
