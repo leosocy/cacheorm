@@ -161,3 +161,35 @@ class CompositeKey(Field):
         super(CompositeKey, self).__init__(
             primary_key=True, index_formatter=index_formatter, **kwargs
         )
+
+    def __get__(self, instance, instance_type=None):
+        if instance is not None:
+            return tuple(
+                getattr(instance, field_name) for field_name in self.field_names
+            )
+        return self
+
+    def __set__(self, instance, value):
+        if not isinstance(value, (tuple, list)):
+            raise TypeError(
+                "A list or tuple must be used to set the value of "
+                "a composite primary key."
+            )
+        if len(value) != len(self.field_names):
+            raise ValueError(
+                "The length of the value must equal the number "
+                "of columns of the composite primary key."
+            )
+        for idx, field_value in enumerate(value):
+            setattr(instance, self.field_names[idx], field_value)
+
+    def __hash__(self):
+        return hash((self.model.__name__, self.field_names))
+
+    def __eq__(self, other):
+        return {field_name: value for field_name, value in zip(self.field_names, other)}
+
+    def bind(self, model, name, set_attribute=True):
+        self.model = model
+        self.name = name
+        setattr(model, self.name, self)

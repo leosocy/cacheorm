@@ -2,6 +2,7 @@ import decimal
 import uuid
 
 import cacheorm as co
+import pytest
 
 
 class TestModel(co.Model):
@@ -130,10 +131,22 @@ class CompositeModel(TestModel):
     data = co.StringField()
 
     class Meta:
-        primary_key = co.CompositeKey("first", "last")
+        primary_key = co.CompositeKey("first", "last", index_formatter="test.%s.%s")
 
 
 def test_composite_key():
-    c = CompositeModel.create(first="foo", last="bar", data="baz")
-    assert c.data == CompositeModel.get(first="foo", last="bar")
-    assert c.data == CompositeModel.get_by_id(("foo", "bar"))
+    c = CompositeModel.create(first="a", last="b", data="c")
+    assert c.data == CompositeModel.get(first="a", last="b").data
+    assert c.data == CompositeModel.get_by_id(("a", "b")).data
+    assert c.get_id() == ("a", "b")
+    with pytest.raises(TypeError):
+        c._pk = {}
+    with pytest.raises(ValueError):
+        c._pk = ("foo", "bar", "baz")
+    c._pk = ("e", "f")
+    c.save(force_insert=True)
+    assert c.data == CompositeModel.get_by_id(("e", "f")).data
+    c = CompositeModel.set_by_id(("e", "f"), {"data": "g"})
+    assert c.data == CompositeModel.get_by_id(("e", "f")).data
+    CompositeModel.delete_by_id(("e", "f"))
+    assert CompositeModel.get_or_none(first="e", last="f") is None

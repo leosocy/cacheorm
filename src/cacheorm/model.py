@@ -1,7 +1,7 @@
 import copy
 from collections import defaultdict
 
-from .fields import Field, FieldAccessor, IntegerField
+from .fields import CompositeKey, Field, FieldAccessor, IntegerField
 from .index import IndexManager, IndexMatcher
 from .types import with_metaclass
 
@@ -26,6 +26,7 @@ class Metadata(object):
         self.fields = {}
         self.defaults = {}
         self.primary_key = primary_key
+        self.composite_key = False
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -33,15 +34,21 @@ class Metadata(object):
 
     def add_field(self, field_name, field, set_attribute=True):
         field.bind(self.model, field_name, set_attribute)
-        self.fields[field.name] = field
-        if field.default is not None:
-            self.defaults[field] = field.default
+        if not isinstance(field, CompositeKey):
+            self.fields[field.name] = field
+            if field.default is not None:
+                self.defaults[field] = field.default
 
     def set_primary_key(self, name, field):
+        self.composite_key = isinstance(field, CompositeKey)
         self.add_field(name, field)
         self.primary_key = field
 
     def get_primary_key_fields(self):
+        if self.composite_key:
+            return tuple(
+                self.fields[field_name] for field_name in self.primary_key.field_names
+            )
         return (self.primary_key,)
 
     def set_backend(self, backend):
@@ -117,6 +124,8 @@ class ModelBase(type):
                 )
             else:
                 pk = False
+        elif isinstance(pk, CompositeKey):
+            pk_name = "__composite_key__"
         if pk is False:
             raise ValueError("required primary key %s." % name)
         cls._meta.set_primary_key(pk_name, pk)
@@ -254,7 +263,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def get_by_id(cls, pk):
-        query = {cls._meta.primary_key.name: pk}
+        query = cls._meta.primary_key == pk
         return cls.get(**query)
 
     @classmethod
@@ -295,7 +304,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def set_by_id(cls, pk, value):
         update = copy.deepcopy(value)
-        update.update({cls._meta.primary_key.name: pk})
+        update.update(cls._meta.primary_key == pk)
         inst = ModelUpdate(cls, update).execute()
         if inst is None:
             raise cls.DoesNotExist(
@@ -325,7 +334,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def delete_by_id(cls, pk):
-        deleted = ModelDelete(cls, {cls._meta.primary_key.name: pk}).execute()
+        deleted = ModelDelete(cls, cls._meta.primary_key == pk).execute()
         if deleted is False:
             raise cls.DoesNotExist(
                 "%s instance matching query does not exist:\nQuery: %s" % (cls, pk)
