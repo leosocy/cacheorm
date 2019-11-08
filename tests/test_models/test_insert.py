@@ -6,6 +6,7 @@ from cacheorm.fields import IntegerField, StringField
 
 def test_create(person_model):
     amy = person_model.create(name="Amy", height=167.5, email="Amy@gmail.com")
+    assert amy.married is False
     sam = person_model(name="Sam", height=178.6, married=True)
     sam.save(force_insert=True)
     assert amy != sam

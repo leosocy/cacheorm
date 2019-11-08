@@ -1,7 +1,7 @@
 import copy
 from collections import defaultdict
 
-from .fields import Field, FieldAccessor, IntegerField
+from .fields import CompositeKey, Field, FieldAccessor, IntegerField
 from .index import IndexManager, IndexMatcher
 from .types import with_metaclass
 
@@ -26,6 +26,7 @@ class Metadata(object):
         self.fields = {}
         self.defaults = {}
         self.primary_key = primary_key
+        self.composite_key = False
 
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -33,15 +34,21 @@ class Metadata(object):
 
     def add_field(self, field_name, field, set_attribute=True):
         field.bind(self.model, field_name, set_attribute)
-        self.fields[field.name] = field
-        if field.default is not None:
-            self.defaults[field] = field.default
+        if not isinstance(field, CompositeKey):
+            self.fields[field.name] = field
+            if field.default is not None:
+                self.defaults[field] = field.default
 
     def set_primary_key(self, name, field):
+        self.composite_key = isinstance(field, CompositeKey)
         self.add_field(name, field)
         self.primary_key = field
 
     def get_primary_key_fields(self):
+        if self.composite_key:
+            return tuple(
+                self.fields[field_name] for field_name in self.primary_key.field_names
+            )
         return (self.primary_key,)
 
     def set_backend(self, backend):
@@ -117,6 +124,8 @@ class ModelBase(type):
                 )
             else:
                 pk = False
+        elif isinstance(pk, CompositeKey):
+            pk_name = "__composite_key__"
         if pk is False:
             raise ValueError("required primary key %s." % name)
         cls._meta.set_primary_key(pk_name, pk)
@@ -172,16 +181,17 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         :rtype: boolean
         :raise: ValueError: 缺少构造Model字段所需的值
         """
-        # TODO(leosocy): support force_insert
         field_dict = self.__data__.copy()
         if self._pk is not None and not force_insert:
             inst = self.update(**field_dict).execute()
         else:
             inst = self.insert(**field_dict).execute()
+            if inst is not None:
+                self.__data__ = copy.deepcopy(inst.__data__)
         return inst is not None
 
     def delete_instance(self):
-        return self.delete(**{self._meta.primary_key.name: self._pk}).execute()
+        return self.delete(**self._meta.primary_key.__key__(self._pk)).execute()
 
     @classmethod
     def insert(cls, **insert):
@@ -253,8 +263,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def get_by_id(cls, pk):
-        query = {cls._meta.primary_key.name: pk}
-        return cls.get(**query)
+        return cls.get(**cls._meta.primary_key.__key__(pk))
 
     @classmethod
     def get_or_none(cls, **query):
@@ -294,7 +303,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def set_by_id(cls, pk, value):
         update = copy.deepcopy(value)
-        update.update({cls._meta.primary_key.name: pk})
+        update.update(cls._meta.primary_key.__key__(pk))
         inst = ModelUpdate(cls, update).execute()
         if inst is None:
             raise cls.DoesNotExist(
@@ -324,7 +333,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def delete_by_id(cls, pk):
-        deleted = ModelDelete(cls, {cls._meta.primary_key.name: pk}).execute()
+        deleted = ModelDelete(cls, cls._meta.primary_key.__key__(pk)).execute()
         if deleted is False:
             raise cls.DoesNotExist(
                 "%s instance matching query does not exist:\nQuery: %s" % (cls, pk)
@@ -372,8 +381,9 @@ class RowSplitter(object):
                 if skip_key_error:
                     continue
                 if field in self._defaults:
-                    # TODO(leosocy): support callable default
                     val = self._defaults[field]
+                    if callable(val):
+                        val = val()
                 elif field.null:
                     continue
                 else:
@@ -436,8 +446,9 @@ class Insert(object):
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
-                raise ValueError("can't match any index for row %s" % row)
-            index = matcher.select_index(indexes)
+                index = model._index_manager.get_primary_key_index()
+            else:
+                index = matcher.select_index(indexes)
             splitter = RowSplitterFactory.create(model, index)
             index_data, payload_data = splitter.split(row)
             meta = model._meta

@@ -84,7 +84,7 @@ class Collection(co.Model):
     remark = co.StringField(default="")
 
     class Meta:
-        primary_key = co.CompositeField("collector", "note_id", index_formatter="collection.%s.%d")
+        primary_key = co.CompositeKey("collector", "note_id", index_formatter="collection.%s.%d")
         backend = memcached
         serializer = co.registry.get_by_name("msgpack")
 ```
@@ -146,6 +146,17 @@ collections = Collection.update_many(
 
 ### Delete
 
+```python
+Person.delete_by_id("Bob")
+Person.delete(name="Sam").execute()
+note = Note.query(id=1).execute()
+Collection.delete_many(
+    {"collector": "Bob","note_id": note.id},
+    {"collector": "Sam","note_id": note.id},
+).execute()
+note.delete_instance()
+```
+
 ## ModelHelper
 
 ### Insert
@@ -160,10 +171,10 @@ collections = Collection.update_many(
 
 - IntegerField
 - FloatField
-- TODO: DecimalField
+- DecimalField
 - TODO: EnumField
-- TODO: AutoField
-- TODO: CompositeField
+- UUIDField/ShortUUIDField
+- CompositeKey
 - BooleanField
 - StringField
 - TODO: DateTimeField

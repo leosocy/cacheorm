@@ -47,6 +47,8 @@ setuptools.setup(
             "flake8-bugbear",
             "pep8-naming",
             "flake8-comprehensions",
+            # fields
+            "shortuuid",
             # backends
             "redis>=3.0",
             "pylibmc",  # dependence `libmemcached`.
