@@ -191,7 +191,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return inst is not None
 
     def delete_instance(self):
-        return self.delete(**{self._meta.primary_key.name: self._pk}).execute()
+        return self.delete(**self._meta.primary_key.__key__(self._pk)).execute()
 
     @classmethod
     def insert(cls, **insert):
@@ -263,8 +263,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def get_by_id(cls, pk):
-        query = cls._meta.primary_key == pk
-        return cls.get(**query)
+        return cls.get(**cls._meta.primary_key.__key__(pk))
 
     @classmethod
     def get_or_none(cls, **query):
@@ -304,7 +303,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     @classmethod
     def set_by_id(cls, pk, value):
         update = copy.deepcopy(value)
-        update.update(cls._meta.primary_key == pk)
+        update.update(cls._meta.primary_key.__key__(pk))
         inst = ModelUpdate(cls, update).execute()
         if inst is None:
             raise cls.DoesNotExist(
@@ -334,7 +333,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
 
     @classmethod
     def delete_by_id(cls, pk):
-        deleted = ModelDelete(cls, cls._meta.primary_key == pk).execute()
+        deleted = ModelDelete(cls, cls._meta.primary_key.__key__(pk)).execute()
         if deleted is False:
             raise cls.DoesNotExist(
                 "%s instance matching query does not exist:\nQuery: %s" % (cls, pk)

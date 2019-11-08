@@ -52,6 +52,9 @@ class Field(object):
             return "<%s: %s.%s>" % (type(self).__name__, self.model.__name__, self.name)
         return "<%s: (unbound)>" % type(self).__name__
 
+    def __key__(self, other):
+        return {self.name: other}
+
     def bind(self, model, name, set_attribute=True):
         self.model = model
         self.name = name
@@ -186,7 +189,7 @@ class CompositeKey(Field):
     def __hash__(self):
         return hash((self.model.__name__, self.field_names))
 
-    def __eq__(self, other):
+    def __key__(self, other):
         return {field_name: value for field_name, value in zip(self.field_names, other)}
 
     def bind(self, model, name, set_attribute=True):
