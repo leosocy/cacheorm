@@ -4,14 +4,7 @@ import uuid
 import cacheorm as co
 import pytest
 
-
-class TestModel(co.Model):
-    id = co.ShortUUIDField(primary_key=True, default=uuid.uuid4)
-
-    class Meta:
-        backend = co.SimpleBackend()
-        serializer = co.JSONSerializer()
-        ttl = 60
+from .test_models import TestModel
 
 
 class IntModel(TestModel):

@@ -158,6 +158,17 @@ class StringField(Field):
         return str(value)
 
 
+class ForeignKeyField(Field):
+    # TODO(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
+    #  backref也不支持，原因相同。
+    # TODO(leosocy): support cascade_delete
+    def __init__(self, model, object_id_name=None, *args, **kwargs):
+        super(ForeignKeyField, self).__init__(*args, **kwargs)
+        self.rel_model = model
+        self.rel_field = self.rel_model._meta.primary_key
+        self.object_id_name = object_id_name
+
+
 class CompositeKey(Field):
     def __init__(self, *field_names, index_formatter=None, **kwargs):
         self.field_names = field_names
