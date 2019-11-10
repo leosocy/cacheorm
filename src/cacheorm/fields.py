@@ -22,6 +22,51 @@ class FieldAccessor(object):
         instance.__data__[self.name] = value
 
 
+class ForeignAccessor(FieldAccessor):
+    def __init__(self, model, field, name):
+        super(ForeignAccessor, self).__init__(model, field, name)
+        self.rel_model = field.rel_model
+
+    def get_rel_instance(self, instance):
+        value = instance.__data__.get(self.name)
+        if value is not None or self.name in instance.__rel__:
+            if self.name not in instance.__rel__:
+                obj = self.rel_model.get(**{self.field.rel_field.name: value})
+                instance.__rel__[self.name] = obj
+            return instance.__rel__[self.name]
+        elif not self.field.null:
+            raise self.rel_model.DoesNotExist
+        return value
+
+    def __get__(self, instance, instance_type=None):
+        if instance is not None:
+            return self.get_rel_instance(instance)
+        return self.field
+
+    def __set__(self, instance, value):
+        if isinstance(value, self.rel_model):
+            instance.__data__[self.name] = getattr(value, self.field.rel_field.name)
+            instance.__rel__[self.name] = value
+        else:
+            prev_value = instance.__data__.get(self.name)
+            instance.__data__[self.name] = value
+            if value != prev_value and self.name in instance.__rel__:
+                del instance.__rel__[self.name]
+
+
+class ObjectIdAccessor(object):
+    def __init__(self, field):
+        self.field = field
+
+    def __get__(self, instance, instance_type=None):
+        if instance is not None:
+            return instance.__data__.get(self.field.name)
+        return self.field
+
+    def __set__(self, instance, value):
+        setattr(instance, self.field.name, value)
+
+
 class Field(object):
     # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
@@ -159,14 +204,42 @@ class StringField(Field):
 
 
 class ForeignKeyField(Field):
+    accessor_class = ForeignAccessor
+
     # TODO(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
     #  backref也不支持，原因相同。
     # TODO(leosocy): support cascade_delete
     def __init__(self, model, object_id_name=None, *args, **kwargs):
         super(ForeignKeyField, self).__init__(*args, **kwargs)
         self.rel_model = model
-        self.rel_field = self.rel_model._meta.primary_key
+        self.rel_field = None
         self.object_id_name = object_id_name
+
+    def adapt(self, value):
+        return self.rel_field.adapt(value)
+
+    def cache_value(self, value):
+        if isinstance(value, self.rel_model):
+            value = value.get_id()
+        return self.rel_field.cache_value(value)
+
+    def python_value(self, value):
+        return self.rel_field.python_value(value)
+
+    def bind(self, model, name, set_attribute=True):
+        if not self.object_id_name:
+            self.object_id_name = name if name.endswith("_id") else name + "_id"
+        elif self.object_id_name == name:
+            raise ValueError(
+                "ForeignKeyField %s.%s specifies an object_id_name "
+                "that conflicts with its field name" % (model._meta.name, name)
+            )
+        if self.rel_model == "self":
+            self.rel_model = model
+        self.rel_field = self.rel_model._meta.primary_key
+        super(ForeignKeyField, self).bind(model, name, set_attribute)
+        if set_attribute:
+            setattr(model, self.object_id_name, ObjectIdAccessor(self))
 
 
 class CompositeKey(Field):

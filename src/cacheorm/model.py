@@ -99,7 +99,7 @@ class ModelBase(type):
                     attrs[k] = copy.deepcopy(v.field)
 
         cls = super(ModelBase, cls).__new__(cls, name, bases, attrs)
-        cls.__data__ = None
+        cls.__data__ = cls.__rel__ = None
         cls._meta = Metadata(cls, **meta_options)
         cls._index_manager = IndexManager(cls)
 
@@ -148,6 +148,7 @@ class ModelBase(type):
 class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
     def __init__(self, *args, **kwargs):
         self.__data__ = {}
+        self.__rel__ = {}
         for k, v in kwargs.items():
             setattr(self, k, v)
 
