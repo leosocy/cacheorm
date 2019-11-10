@@ -91,8 +91,9 @@ def test_composite_key_contain_foreign_key_fields():
         {"liker_id": bob.id, "article": article.id},
     ).execute()
     assert likes[0].mark == Like.get_by_id((sam, article)).mark
-    deleted = Like.delete(like=bob, article_id=article.id).execute()
+    deleted = Like.delete(liker=bob, article_id=article.id).execute()
     assert deleted is True
     with pytest.raises(Like.DoesNotExist):
-        Like.get_by_id((sam.id, article))
+        Like.get_by_id((bob.id, article))
     Like.set_by_id((sam, article), {"mark": "ohhhho"})
+    assert "ohhhho" == Like.get(liker=sam, article=article).mark

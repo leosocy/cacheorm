@@ -444,6 +444,7 @@ class Insert(object):
         instances = []
         group_by_meta = defaultdict(dict)
         for model, row in _RowScanner.scan(self._insert_list):
+            row = model(**row).__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
@@ -480,6 +481,7 @@ class Query(object):
         for backend, pairs in group_by_backend.items():
             cache_keys = []
             for model, row in pairs:
+                row = model(**row).__data__.copy()
                 matcher = IndexMatcher(model)
                 indexes = matcher.match_indexes_for(**row)
                 if not indexes:
@@ -521,13 +523,14 @@ class Update(object):
             if original_instance is None:
                 instances.append(None)
                 continue
+            row = model(**row).__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
                 raise ValueError("can't match any index for row %s" % row)
             index = matcher.select_index(indexes)
             for k, v in original_instance.__data__.items():
-                if k not in index.field_names:
+                if k not in index.field_names and k not in row:
                     row.update({k: v})
             splitter = RowSplitterFactory.create(model, index)
             index_data, payload_data = splitter.split(row)
@@ -549,6 +552,7 @@ class Delete(object):
     def execute(self):
         group_by_backend = defaultdict(list)
         for model, row in _RowScanner.scan(self._delete_list):
+            row = model(**row).__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
