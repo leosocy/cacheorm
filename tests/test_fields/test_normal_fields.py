@@ -93,14 +93,14 @@ class UUIDModel(TestModel):
 def test_uuid_field():
     uu = uuid.uuid4()
     u = UUIDModel.create(data=uu, sdata=uu)
-    u_db = UUIDModel.get(id=u.id)
-    assert uu == u_db.sdata
+    u_cache = UUIDModel.get(id=u.id)
+    assert uu == u_cache.sdata
     # use hex string
     uu = uuid.uuid4()
     u = UUIDModel.create(data=uu.hex, sdata=uu.hex)
-    u_db = UUIDModel.get(id=u.id)
-    assert uu == u_db.data
-    assert uu == u_db.sdata
+    u_cache = UUIDModel.get(id=u.id)
+    assert uu == u_cache.data
+    assert uu == u_cache.sdata
 
 
 class StringModel(TestModel):

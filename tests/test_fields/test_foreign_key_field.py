@@ -46,13 +46,13 @@ def test_query():
     sam = User.insert(username="sam").execute()
     article = Article.insert(content="sam article", author=sam).execute()
     with Article.mock_backend_method("get") as m:
-        article_db = Article.get_by_id(article.id)
-        assert sam.id == article_db.author_id
+        article_cache = Article.get_by_id(article.id)
+        assert sam.id == article_cache.author_id
         assert 1 == m.call_count
-        assert sam.username == article_db.author.username
+        assert sam.username == article_cache.author.username
         assert 2 == m.call_count
         with pytest.raises(AttributeError):
-            _ = article_db.author.invalid
+            _ = article_cache.author.invalid
     with pytest.raises(AttributeError):
         _ = Article.author.invalid
     with pytest.raises(User.DoesNotExist):
@@ -73,27 +73,34 @@ def test_specify_object_id_name():
     assert sam1.username == sam2.sub_user.username
 
 
-class Like(TestModel):
-    liker = co.ForeignKeyField(User)
+class Collection(TestModel):
+    collector = co.ForeignKeyField(User)
     article = co.ForeignKeyField(Article)
     mark = co.StringField(default="")
 
     class Meta:
-        primary_key = co.CompositeKey("liker", "article")
+        primary_key = co.CompositeKey(
+            "collector", "article", index_formatter="collection.%s.%s"
+        )
 
 
 def test_composite_key_contain_foreign_key_fields():
     sam = User.create(username="sam")
     bob = User.create(username="bob")
     article = Article.create(content="sam article", author=sam)
-    likes = Like.insert_many(
-        {"liker": sam, "article": article, "mark": "myself"},
-        {"liker_id": bob.id, "article": article.id},
+    collections = Collection.insert_many(
+        {"collector": sam, "article": article, "mark": "myself"},
+        {"collector_id": bob.id, "article": article.id},
     ).execute()
-    assert likes[0].mark == Like.get_by_id((sam, article)).mark
-    deleted = Like.delete(liker=bob, article_id=article.id).execute()
+    assert collections[0].mark == Collection.get_by_id((sam, article)).mark
+    collections_cache = Collection.query_many(
+        {"collector": sam.id, "article_id": article.id},
+        {"collector": bob, "article": article},
+    ).execute()
+    assert collections == collections_cache
+    deleted = Collection.delete(collector=bob, article_id=article.id).execute()
     assert deleted is True
-    with pytest.raises(Like.DoesNotExist):
-        Like.get_by_id((bob.id, article))
-    Like.set_by_id((sam, article), {"mark": "ohhhho"})
-    assert "ohhhho" == Like.get(liker=sam, article=article).mark
+    with pytest.raises(Collection.DoesNotExist):
+        Collection.get_by_id((bob.id, article))
+    Collection.set_by_id((sam, article), {"mark": "ohhhho"})
+    assert "ohhhho" == Collection.get(collector=sam, article=article).mark
