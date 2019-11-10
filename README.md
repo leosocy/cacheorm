@@ -1,4 +1,4 @@
-# A cache-based python ORM -- supports Redis, Memcached.
+# A cache-based python ORM -- supports Redis/Memcached/InMemory/FileSystem backends, and JSON/Msgpack/Pickle/Protobuf serializers.
 
 [![Build Status](https://travis-ci.org/Leosocy/cacheorm.svg?branch=master)](https://travis-ci.org/Leosocy/cacheorm)
 [![codecov](https://codecov.io/gh/Leosocy/cacheorm/branch/master/graph/badge.svg)](https://codecov.io/gh/Leosocy/cacheorm)
@@ -30,10 +30,10 @@
 
 ## Serializer
 
-- json
-- msgpack
-- pickle
-- protobuf
+- JSON
+- Msgpack
+- Pickle
+- Protobuf
 
 ### Registry
 
@@ -52,9 +52,10 @@ registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
 
 ```python
 import datetime
+
 import cacheorm as co
 
-class Person(co.Model):
+class User(co.Model):
     name = co.StringField(primary_key=True)
     height = co.FloatField()
     married = co.BooleanField(default=False)
@@ -65,26 +66,27 @@ class Person(co.Model):
         serializer = co.registry.get_by_name("json")
 
 
-class Note(co.Model):
-    author = co.StringField()
+class Article(co.Model):
+    id = co.IntegerField(primary_key=True)
+    author = co.ForeignKeyField(User)
     title = co.StringField()
-    content = co.StringField()
+    content = co.StringField(default="")
     created_at = co.DateTimeField(default=datetime.datetime.now)
     updated_at = co.DateTimeField(default=datetime.datetime.now)
 
     class Meta:
         backend = redis
-        serializer = co.registry.get_by_name("protobuf.note")
+        serializer = co.registry.get_by_name("protobuf.article")
         ttl = 100 * 24 * 3600
 
 
 class Collection(co.Model):
-    collector = co.StringField()
-    note_id = co.IntegerField()
-    remark = co.StringField(default="")
+    collector = co.ForeignKeyField(User)
+    article = co.ForeignKeyField(Article)
+    mark = co.StringField(default="")
 
     class Meta:
-        primary_key = co.CompositeKey("collector", "note_id", index_formatter="collection.%s.%d")
+        primary_key = co.CompositeKey("collector", "article", index_formatter="collection.%s.%d")
         backend = memcached
         serializer = co.registry.get_by_name("msgpack")
 ```
@@ -99,25 +101,25 @@ class Collection(co.Model):
 ### Insert
 
 ```python
-sam = Person.create(name="Sam", height=178.8, emial="sam@gmail.com")
-bob = Person.insert(name="Bob", height=182.4, emial="Bob@gmail.com").execute()
-note = Note(author=sam, title="CacheORM", content="Create a note using cacheorm.")
-note.save(force_insert=True)
+sam = User.create(name="Sam", height=178.8, emial="sam@gmail.com")
+bob = User.insert(name="Bob", height=182.4, emial="Bob@gmail.com").execute()
+article = Article(author=sam, title="CacheORM", content="Create a article using cacheorm.")
+article.save(force_insert=True)
 collections = Collection.insert_many(
-    {"collector": "Bob","note_id": note.id},
-    Collection(collector=sam, note_id=note.id)
+    {"collector": bob, "article_id": article},
+    Collection(collector=sam, article=article)
 ).execute()
 ```
 
 ### Query
 
 ```python
-sam = Person.get(name="Sam")
-bob = Person.get_by_id("Bob")
-note = Note.query(id=1).execute()
+sam = User.get(name="Sam")
+bob = User.get_by_id("Bob")
+article = Article.query(id=1).execute()
 collections = Collection.query_many(
-    {"collector": "Bob","note_id": note.id},
-    {"collector": "Sam","note_id": note.id},
+    {"collector": "Bob", "article_id": article.id},
+    {"collector": "Sam", "article_id": article.id},
 ).execute()
 ```
 
@@ -131,30 +133,30 @@ so if you want to guarantee atomicity,
 you need manager lock by yourself, such as with redlock.
 
 ```python
-sam = Person.set_by_id("Sam", {"height": 178.0})
-bob = Person.get_by_id("Bob")
+sam = User.set_by_id("Sam", {"height": 178.0})
+bob = User.get_by_id("Bob")
 bob.married = True
 bob.save()
-note = Note.update(
+article = Article.update(
     id=1, title="What's new in CacheORM?"
 ).execute()
 collections = Collection.update_many(
-    {"collector": "Bob","note_id": note.id, "remark": "mark"},
-    {"collector": "Sam","note_id": note.id, "remark": "Good"},
+    {"collector": "Bob", "article_id": article.id, "mark": "mark"},
+    {"collector": "Sam", "article_id": article.id, "mark": "Good"},
 ).execute()
 ```
 
 ### Delete
 
 ```python
-Person.delete_by_id("Bob")
-Person.delete(name="Sam").execute()
-note = Note.query(id=1).execute()
+User.delete_by_id("Bob")
+User.delete(name="Sam").execute()
+article = Article.query(id=1).execute()
 Collection.delete_many(
-    {"collector": "Bob","note_id": note.id},
-    {"collector": "Sam","note_id": note.id},
+    {"collector": "Bob", "article_id": article.id},
+    {"collector": "Sam", "article_id": article.id},
 ).execute()
-note.delete_instance()
+article.delete_instance()
 ```
 
 ## ModelHelper
@@ -177,7 +179,11 @@ note.delete_instance()
 - CompositeKey
 - BooleanField
 - StringField
+- ForeignKeyField
+- TODO: StructField(serializer, deserializer)
 - TODO: DateTimeField
+- TODO: DateField
+- TODO: TimeField
 - TODO: TimestampField
 
 ## Signals

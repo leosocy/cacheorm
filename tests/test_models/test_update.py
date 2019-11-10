@@ -13,7 +13,7 @@ def test_save_when_pk_exists(person_model):
     assert person_model.get_or_none(name="Sam") == sam
     sam.height = 180
     assert sam.save() is True
-    assert person_model.get_by_id("Sam") == sam
+    assert 180 == person_model.get_by_id("Sam").height == sam.height
 
 
 def test_set_by_id(person_model):
@@ -21,7 +21,7 @@ def test_set_by_id(person_model):
         person_model.set_by_id("Sam", {"height": 180})
     person_model.create(name="Sam", height=178.6, married=True)
     sam = person_model.set_by_id("Sam", {"height": 180})
-    assert person_model.get_by_id("Sam") == sam
+    assert 180 == person_model.get_by_id("Sam").height == sam.height
 
 
 def test_update(person_model):
@@ -29,7 +29,7 @@ def test_update(person_model):
     assert sam is None
     person_model.create(name="Sam", height=178.6, married=True)
     sam = person_model.update(name="Sam", height=180).execute()
-    assert person_model.get_by_id("Sam") == sam
+    assert 180 == person_model.get_by_id("Sam").height == sam.height
     with pytest.raises(ValueError):
         person_model.update(height=180).execute()
 
@@ -45,4 +45,4 @@ def test_update_many(person_model):
     ).execute()
     assert sam is None
     assert amy.height == 167.5
-    assert person_model.get_by_id("Amy") == amy
+    assert person_model.get_by_id("Amy").married is True
