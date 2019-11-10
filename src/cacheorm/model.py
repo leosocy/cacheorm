@@ -1,5 +1,6 @@
 import copy
 from collections import defaultdict
+from itertools import chain
 
 from .fields import CompositeKey, Field, FieldAccessor, IntegerField
 from .index import IndexManager, IndexMatcher
@@ -377,7 +378,7 @@ class RowSplitter(object):
         payload = {}
         for field in fields:
             try:
-                val = field.cache_value(row[field.name])
+                val = row[field.name]
             except KeyError:
                 if skip_key_error:
                     continue
@@ -444,7 +445,8 @@ class Insert(object):
         instances = []
         group_by_meta = defaultdict(dict)
         for model, row in _RowScanner.scan(self._insert_list):
-            row = model(**row).__data__.copy()
+            instance = model(**row)
+            row = instance.__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
@@ -456,9 +458,11 @@ class Insert(object):
             meta = model._meta
             cache_key = index.make_cache_key(**index_data)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                payload_data
+                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
             )
-            instances.append(model(**index_data, **payload_data))
+            for k, v in chain(index_data.items(), payload_data.items()):
+                setattr(instance, k, v)
+            instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
         return instances
@@ -481,7 +485,8 @@ class Query(object):
         for backend, pairs in group_by_backend.items():
             cache_keys = []
             for model, row in pairs:
-                row = model(**row).__data__.copy()
+                instance = model(**row)
+                row = instance.__data__.copy()
                 matcher = IndexMatcher(model)
                 indexes = matcher.match_indexes_for(**row)
                 if not indexes:
@@ -491,7 +496,9 @@ class Query(object):
                 index_data, _ = splitter.split(row, skip_payload=True)
                 cache_key = index.make_cache_key(**index_data)
                 cache_keys.append(cache_key)
-                instances.append(model(**index_data))
+                for k, v in index_data.items():
+                    setattr(instance, k, v)
+                instances.append(instance)
             for val, (idx, inst) in zip(
                 backend.get_many(*cache_keys), enumerate(instances)
             ):
@@ -523,7 +530,8 @@ class Update(object):
             if original_instance is None:
                 instances.append(None)
                 continue
-            row = model(**row).__data__.copy()
+            instance = model(**row)
+            row = instance.__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
@@ -537,9 +545,11 @@ class Update(object):
             meta = model._meta
             cache_key = index.make_cache_key(**index_data)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                payload_data
+                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
             )
-            instances.append(model(**index_data, **payload_data))
+            for k, v in chain(index_data.items(), payload_data.items()):
+                setattr(instance, k, v)
+            instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
         return instances
@@ -552,7 +562,8 @@ class Delete(object):
     def execute(self):
         group_by_backend = defaultdict(list)
         for model, row in _RowScanner.scan(self._delete_list):
-            row = model(**row).__data__.copy()
+            instance = model(**row)
+            row = instance.__data__.copy()
             matcher = IndexMatcher(model)
             indexes = matcher.match_indexes_for(**row)
             if not indexes:
