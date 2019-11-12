@@ -20,7 +20,9 @@ class IndexFormatter(object):
 
 class Index(object):
     def __init__(self, model, fields, formatter=None):
+        self.model = model
         self.fields = fields
+        self.defaults = model._meta.defaults
         self.field_names = {field.name for field in fields}
         if isinstance(formatter, str):
             self.formatter = IndexFormatter.from_string_format(formatter)
@@ -29,11 +31,21 @@ class Index(object):
         else:
             self.formatter = IndexFormatter.from_default(model, fields)
 
-    def make_cache_key(self, **query):
-        missing_keys = self.field_names - set(query.keys())
-        if missing_keys:
-            raise KeyError("missing index keys %s in query" % missing_keys)
-        values = [field.cache_value(query[field.name]) for field in self.fields]
+    def make_cache_key(self, model_instance):
+        values = []
+        for field in self.fields:
+            val = model_instance.__data__.get(field.name)
+            if val is None:
+                try:
+                    val = self.defaults[field]
+                    if callable(val):
+                        val = val()
+                except KeyError:
+                    raise KeyError(
+                        "can't get %s value from instance or default" % field
+                    )
+                setattr(model_instance, field.name, val)
+            values.append(field.cache_value(val))
         return self.formatter.f(*values)
 
 

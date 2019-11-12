@@ -1,6 +1,5 @@
 import copy
 from collections import defaultdict
-from itertools import chain
 
 from .fields import CompositeKey, Field, FieldAccessor, IntegerField
 from .index import IndexManager, IndexMatcher
@@ -456,11 +455,11 @@ class Insert(object):
             splitter = RowSplitterFactory.create(model, index)
             index_data, payload_data = splitter.split(row)
             meta = model._meta
-            cache_key = index.make_cache_key(**index_data)
+            cache_key = index.make_cache_key(instance)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
                 {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
             )
-            for k, v in chain(index_data.items(), payload_data.items()):
+            for k, v in payload_data.items():
                 setattr(instance, k, v)
             instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
@@ -494,10 +493,8 @@ class Query(object):
                 index = matcher.select_index(indexes)
                 splitter = RowSplitterFactory.create(model, index)
                 index_data, _ = splitter.split(row, skip_payload=True)
-                cache_key = index.make_cache_key(**index_data)
+                cache_key = index.make_cache_key(instance)
                 cache_keys.append(cache_key)
-                for k, v in index_data.items():
-                    setattr(instance, k, v)
                 instances.append(instance)
             for val, (idx, inst) in zip(
                 backend.get_many(*cache_keys), enumerate(instances)
@@ -543,11 +540,11 @@ class Update(object):
             splitter = RowSplitterFactory.create(model, index)
             index_data, payload_data = splitter.split(row)
             meta = model._meta
-            cache_key = index.make_cache_key(**index_data)
+            cache_key = index.make_cache_key(instance)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
                 {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
             )
-            for k, v in chain(index_data.items(), payload_data.items()):
+            for k, v in payload_data.items():
                 setattr(instance, k, v)
             instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
@@ -571,7 +568,7 @@ class Delete(object):
             index = matcher.select_index(indexes)
             splitter = RowSplitterFactory.create(model, index)
             index_data, _ = splitter.split(row, skip_payload=True)
-            cache_key = index.make_cache_key(**index_data)
+            cache_key = index.make_cache_key(instance)
             group_by_backend[model._meta.backend].append(cache_key)
         return all(
             backend.delete_many(*cache_keys)
