@@ -342,60 +342,6 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return deleted
 
 
-class IndexDumper(object):
-    def dump(self):
-        pass
-
-    def original(self):
-        pass
-
-
-class RowSplitterFactory(object):
-    _splitters = {}
-
-    @staticmethod
-    def create(model, index):
-        cached = RowSplitterFactory._splitters.get((model, index), None)
-        if cached is not None:
-            return cached
-        splitter = RowSplitter(model, index)
-        RowSplitterFactory._splitters[(model, index)] = splitter
-        return splitter
-
-
-class RowSplitter(object):
-    def __init__(self, model, index):
-        self._model = model
-        self._index = index
-        self._all_fields = model._meta.fields.values()
-        self._index_fields = index.fields
-        self._defaults = model._meta.defaults
-
-    def split(self, row, skip_payload=False, skip_key_error=False):
-        fields = self._index_fields if skip_payload else self._all_fields
-        index = {}
-        payload = {}
-        for field in fields:
-            try:
-                val = row[field.name]
-            except KeyError:
-                if skip_key_error:
-                    continue
-                if field in self._defaults:
-                    val = self._defaults[field]
-                    if callable(val):
-                        val = val()
-                elif field.null:
-                    continue
-                else:
-                    raise ValueError("missing value for '%s'." % field)
-            if field in self._index_fields:
-                index[field.name] = val
-            else:
-                payload[field.name] = val
-        return index, payload
-
-
 class _RowScanner(object):
     """
     input should be a tuple or list, format like:
@@ -445,22 +391,17 @@ class Insert(object):
         group_by_meta = defaultdict(dict)
         for model, row in _RowScanner.scan(self._insert_list):
             instance = model(**row)
-            row = instance.__data__.copy()
             matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
+            indexes = matcher.match_indexes_for(**instance.__data__)
             if not indexes:
                 index = model._index_manager.get_primary_key_index()
             else:
                 index = matcher.select_index(indexes)
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, payload_data = splitter.split(row)
             meta = model._meta
             cache_key = index.make_cache_key(instance)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
+                index.make_cache_payload(instance)
             )
-            for k, v in payload_data.items():
-                setattr(instance, k, v)
             instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
@@ -485,14 +426,11 @@ class Query(object):
             cache_keys = []
             for model, row in pairs:
                 instance = model(**row)
-                row = instance.__data__.copy()
                 matcher = IndexMatcher(model)
-                indexes = matcher.match_indexes_for(**row)
+                indexes = matcher.match_indexes_for(**instance.__data__)
                 if not indexes:
                     raise ValueError("can't match any index for row %s" % row)
                 index = matcher.select_index(indexes)
-                splitter = RowSplitterFactory.create(model, index)
-                index_data, _ = splitter.split(row, skip_payload=True)
                 cache_key = index.make_cache_key(instance)
                 cache_keys.append(cache_key)
                 instances.append(instance)
@@ -518,35 +456,25 @@ class Update(object):
         self._update_list = update_list
 
     def execute(self):
-        original_instances = Query(self._update_list).execute()
-        instances = []
+        instances = Query(self._update_list).execute()
         group_by_meta = defaultdict(dict)
-        for (model, row), original_instance in zip(
-            _RowScanner.scan(self._update_list), original_instances
+        for (model, row), instance in zip(
+            _RowScanner.scan(self._update_list), instances
         ):
-            if original_instance is None:
-                instances.append(None)
+            if instance is None:
                 continue
-            instance = model(**row)
-            row = instance.__data__.copy()
+            for k, v in row.items():
+                setattr(instance, k, v)
             matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
+            indexes = matcher.match_indexes_for(**instance.__data__)
             if not indexes:
                 raise ValueError("can't match any index for row %s" % row)
             index = matcher.select_index(indexes)
-            for k, v in original_instance.__data__.items():
-                if k not in index.field_names and k not in row:
-                    row.update({k: v})
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, payload_data = splitter.split(row)
             meta = model._meta
             cache_key = index.make_cache_key(instance)
             group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
+                index.make_cache_payload(instance)
             )
-            for k, v in payload_data.items():
-                setattr(instance, k, v)
-            instances.append(instance)
         for (backend, ttl), mapping in group_by_meta.items():
             backend.set_many(mapping, ttl=ttl)
         return instances
@@ -560,14 +488,11 @@ class Delete(object):
         group_by_backend = defaultdict(list)
         for model, row in _RowScanner.scan(self._delete_list):
             instance = model(**row)
-            row = instance.__data__.copy()
             matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
+            indexes = matcher.match_indexes_for(**instance.__data__)
             if not indexes:
                 raise ValueError("can't match any index for row %s" % row)
             index = matcher.select_index(indexes)
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, _ = splitter.split(row, skip_payload=True)
             cache_key = index.make_cache_key(instance)
             group_by_backend[model._meta.backend].append(cache_key)
         return all(

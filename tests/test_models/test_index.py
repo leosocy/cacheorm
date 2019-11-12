@@ -16,7 +16,7 @@ def test_primary_key_index_default_formatter():
     assert isinstance(index, co.PrimaryKeyIndex)
     key = index.make_cache_key(Test(id=1))
     assert "1" in key and Test._meta.name in key
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         index.make_cache_key(Test())
 
 

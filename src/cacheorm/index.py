@@ -41,12 +41,31 @@ class Index(object):
                     if callable(val):
                         val = val()
                 except KeyError:
-                    raise KeyError(
+                    raise ValueError(
                         "can't get %s value from instance or default" % field
                     )
                 setattr(model_instance, field.name, val)
             values.append(field.cache_value(val))
         return self.formatter.f(*values)
+
+    def make_cache_payload(self, model_instance):
+        payload = {}
+        for name, field in model_instance._meta.fields.items():
+            if name in self.field_names:
+                continue
+            val = model_instance.__data__.get(name)
+            if val is None:
+                if field in self.defaults:
+                    val = self.defaults[field]
+                    if callable(val):
+                        val = val()
+                elif field.null:
+                    continue
+                else:
+                    raise ValueError("missing value for '%s'" % field)
+                setattr(model_instance, name, val)
+            payload.update({name: field.cache_value(val)})
+        return payload
 
 
 class PrimaryKeyIndex(Index):
