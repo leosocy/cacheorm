@@ -31,42 +31,6 @@ class Index(object):
         else:
             self.formatter = IndexFormatter.from_default(model, fields)
 
-    def make_cache_key(self, model_instance):
-        values = []
-        for field in self.fields:
-            val = model_instance.__data__.get(field.name)
-            if val is None:
-                try:
-                    val = self.defaults[field]
-                    if callable(val):
-                        val = val()
-                except KeyError:
-                    raise ValueError(
-                        "can't get %s value from instance or default" % field
-                    )
-                setattr(model_instance, field.name, val)
-            values.append(field.cache_value(val))
-        return self.formatter.f(*values)
-
-    def make_cache_payload(self, model_instance):
-        payload = {}
-        for name, field in model_instance._meta.fields.items():
-            if name in self.field_names:
-                continue
-            val = model_instance.__data__.get(name)
-            if val is None:
-                if field in self.defaults:
-                    val = self.defaults[field]
-                    if callable(val):
-                        val = val()
-                elif field.null:
-                    continue
-                else:
-                    raise ValueError("missing value for '%s'" % field)
-                setattr(model_instance, name, val)
-            payload.update({name: field.cache_value(val)})
-        return payload
-
 
 class PrimaryKeyIndex(Index):
     def __init__(self, model, **kwargs):
@@ -88,24 +52,3 @@ class IndexManager(object):
 
     def get_primary_key_index(self):
         return self.indexes[0]
-
-
-class IndexMatcher(object):
-    def __init__(self, model):
-        self._model = model
-        self._indexes = model._index_manager.indexes
-
-    def match_indexes_for(self, **query):
-        query_keys = set(query.keys())
-        matched = []
-        for index in self._indexes:
-            if index.field_names - query_keys:
-                continue
-            matched.append(index)
-        return matched
-
-    def select_index(self, indexes):
-        for index in indexes:
-            if isinstance(index, PrimaryKeyIndex):
-                return index
-        return indexes[0]

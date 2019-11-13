@@ -71,7 +71,6 @@ class Field(object):
     # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
-    # TODO(leosocy): support callable index_formatter
     def __init__(
         self,
         null=False,
