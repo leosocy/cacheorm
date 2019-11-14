@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import enum
 import uuid
@@ -97,7 +98,7 @@ class BoolModel(TestModel):
 
 def test_boolean_field():
     b1 = BoolModel.create(value=True)
-    b2 = BoolModel.create(value=False)
+    b2 = BoolModel.create(value=0)
     b3 = BoolModel.create()
     values = [
         row.value
@@ -139,6 +140,54 @@ def test_string_field():
         for row in StringModel.query_many({"id": s1.id}, {"id": s2.id}).execute()
     ]
     assert [("", None), ("foo", "bar")] == values
+
+
+class DateModel(TestModel):
+    d = co.DateField(null=True)
+    t = co.TimeField(null=True)
+    dt = co.DateTimeField(null=True)
+
+
+def test_date_fields():
+    dt1 = datetime.datetime(2020, 1, 1, 10, 11, 12, 34567)
+    dt2 = datetime.datetime(2020, 1, 1, 10, 11, 12)
+    d1 = datetime.date(2020, 1, 1)
+    t1 = datetime.time(10, 11, 12, 34567)
+    t2 = datetime.time(10, 11, 12)
+    dm1 = DateModel.create(d=d1, t=t1, dt=dt1)
+    dm2 = DateModel.create(d=None, t=t2, dt=dt2)
+    dm1_cache = DateModel.get_by_id(dm1.id)
+    assert (d1, t1, dt1) == (dm1_cache.d, dm1_cache.t, dm1_cache.dt)
+    dm2_cache = DateModel.get_by_id(dm2.id)
+    assert (None, t2, dt2) == (dm2_cache.d, dm2_cache.t, dm2_cache.dt)
+    with pytest.raises(ValueError):
+        DateModel.create(d="2020 01 01")
+
+
+class DTTZModel(TestModel):
+    dt = co.DateTimeTZField()
+
+
+def test_date_time_tz_field():
+    # miss tzinfo
+    with pytest.raises(ValueError):
+        DTTZModel.create(dt=datetime.datetime.now())
+    tz1 = datetime.timezone.utc
+    dt1 = datetime.datetime.now(tz1)
+    tz2 = datetime.timezone(datetime.timedelta(hours=8))
+    dt2 = datetime.datetime.now(tz2)
+    # value must be datetime instance
+    with pytest.raises(ValueError):
+        DTTZModel.create(dt=dt1.isoformat())
+    # DateTime with time zone will be converted to utc when to cache value.
+    m1 = DTTZModel.create(dt=dt1)
+    m1_cache = DTTZModel.get_by_id(m1.id)
+    assert dt1 == m1_cache.dt
+    assert m1_cache.dt.tzinfo == datetime.timezone.utc
+    m2 = DTTZModel.create(dt=dt2)
+    m2_cache = DTTZModel.get_by_id(m2.id)
+    assert dt2 == m2_cache.dt
+    assert m2_cache.dt.tzinfo == datetime.timezone.utc
 
 
 class CompositeModel(TestModel):

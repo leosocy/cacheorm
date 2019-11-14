@@ -174,16 +174,22 @@ article.delete_instance()
 - IntegerField
 - FloatField
 - DecimalField
-- TODO: EnumField
+- EnumField
 - UUIDField/ShortUUIDField
 - CompositeKey
 - BooleanField
 - StringField
 - ForeignKeyField
+- TODO: BinaryField
 - TODO: StructField(serializer, deserializer)
 - TODO: DateTimeField
 - TODO: DateField
 - TODO: TimeField
 - TODO: TimestampField
 
-## Signals
+## TODO: Signals
+
+- pre_save
+- post_save
+- pre_delete
+- post_delete

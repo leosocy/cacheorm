@@ -1,3 +1,4 @@
+import datetime
 import decimal
 import uuid
 
@@ -108,10 +109,10 @@ class Field(object):
         return value
 
     def cache_value(self, value):
-        return value if value is None else self.adapt(value)
+        return self.adapt(value)
 
     def python_value(self, value):
-        return value if value is None else self.adapt(value)
+        return self.adapt(value)
 
 
 class UUIDField(Field):
@@ -123,7 +124,7 @@ class UUIDField(Field):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return value if value is None else uuid.UUID(value)
+        return uuid.UUID(value)
 
 
 class ShortUUIDField(UUIDField):
@@ -140,7 +141,7 @@ class ShortUUIDField(UUIDField):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return value if value is None else shortuuid.decode(value)
+        return shortuuid.decode(value)
 
 
 class IntegerField(Field):
@@ -158,7 +159,7 @@ class EnumField(Field):
         return value
 
     def python_value(self, value):
-        return value if value is None else self.enum_class(value)
+        return self.enum_class(value)
 
 
 class FloatField(Field):
@@ -175,7 +176,7 @@ class DecimalField(FloatField):
         super(DecimalField, self).__init__(*args, **kwargs)
 
     def cache_value(self, value):
-        if value is not None and self.auto_round:
+        if self.auto_round:
             value = decimal.Decimal(str(value or 0))
             exp = decimal.Decimal(10) ** (-self.decimal_places)
             rounding = self.rounding
@@ -185,11 +186,15 @@ class DecimalField(FloatField):
     def python_value(self, value):
         if isinstance(value, decimal.Decimal):
             return value
-        return value if value is None else decimal.Decimal(str(value))
+        return decimal.Decimal(str(value))
 
 
 class BooleanField(Field):
-    adapt = bool
+    def cache_value(self, value):
+        return 1 if bool(value) else 0
+
+    def python_value(self, value):
+        return bool(value)
 
 
 class StringField(Field):
@@ -199,6 +204,108 @@ class StringField(Field):
         if isinstance(value, (bytes, bytearray)):
             return value.decode(encoding="utf-8")
         return str(value)
+
+
+class BinaryField(Field):
+    """
+    NOTE(leosocy): Since JSON and Protobuf serializer do not support binary,
+     So when using these serializers, you need to set safe=True,
+     then the binary will be encoded in base64.
+     When using other serializers, you can set safe=False
+    """
+
+    def __init__(self, *args, safe=True, **kwargs):
+        super(BinaryField, self).__init__(*args, **kwargs)
+        self.safe = safe
+
+
+def format_date_time(value, formats):
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+    raise ValueError("Cannot format date time string '%s'" % value)
+
+
+class _BaseFormattedField(Field):
+    formats = None
+
+    def __init__(self, formats=None, *args, **kwargs):
+        if formats is not None:
+            self.formats = formats
+        super(_BaseFormattedField, self).__init__(*args, **kwargs)
+
+
+class DateTimeField(_BaseFormattedField):
+    formats = ["%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats)
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class DateTimeTZField(Field):
+    formats = ["%Y-%m-%dT%H:%M:%S%z"]
+
+
+class DateField(Field):
+    formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats).date()
+        elif value and isinstance(value, datetime.datetime):
+            return value.date()
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class TimeField(Field):
+    formats = [
+        "%H:%M:%S.%f",
+        "%H:%M:%S",
+        "%H:%M",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+    ]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats).time()
+        elif isinstance(value, datetime.datetime):
+            return value.time()
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class TimestampField(IntegerField):
+    pass
+
+
+class StructField(Field):
+    def __init__(self, serializer, deserializer, *args, **kwargs):
+        super(StructField, self).__init__(*args, **kwargs)
+        self.se = serializer
+        self.de = deserializer
+
+    def cache_value(self, value):
+        return self.se(value)
+
+    def python_value(self, value):
+        return self.de(value)
+
+
+class JSONField(StructField):
+    pass
 
 
 class ForeignKeyField(Field):
