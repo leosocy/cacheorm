@@ -68,7 +68,6 @@ class ObjectIdAccessor(object):
 
 
 class Field(object):
-    # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
     def __init__(
@@ -154,6 +153,20 @@ class IntegerField(Field):
     adapt = int
 
 
+class EnumField(Field):
+    def __init__(self, enum_class, *args, **kwargs):
+        super(EnumField, self).__init__(*args, **kwargs)
+        self.enum_class = enum_class
+
+    def cache_value(self, value):
+        if isinstance(value, self.enum_class):
+            return value.value
+        return value
+
+    def python_value(self, value):
+        return value if value is None else self.enum_class(value)
+
+
 class FloatField(Field):
     adapt = float
 
@@ -186,9 +199,6 @@ class DecimalField(FloatField):
         return decimal.Decimal(str(value))
 
 
-# TODO(leosocy): EnumField
-
-
 class BooleanField(Field):
     adapt = bool
 
@@ -205,7 +215,7 @@ class StringField(Field):
 class ForeignKeyField(Field):
     accessor_class = ForeignAccessor
 
-    # TODO(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
+    # NOTE(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
     #  backref也不支持，原因相同。
     # TODO(leosocy): support cascade_delete
     def __init__(self, model, object_id_name=None, *args, **kwargs):
