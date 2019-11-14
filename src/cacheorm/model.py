@@ -1,9 +1,9 @@
 import copy
+import uuid
 from collections import defaultdict
-from itertools import chain
 
-from .fields import CompositeKey, Field, FieldAccessor, IntegerField
-from .index import IndexManager, IndexMatcher
+from .fields import CompositeKey, Field, FieldAccessor, UUIDField
+from .index import IndexManager
 from .types import with_metaclass
 
 
@@ -51,9 +51,6 @@ class Metadata(object):
                 self.fields[field_name] for field_name in self.primary_key.field_names
             )
         return (self.primary_key,)
-
-    def set_backend(self, backend):
-        self.backend = backend
 
 
 class DoesNotExist(Exception):
@@ -114,26 +111,17 @@ class ModelBase(type):
                 else:
                     fields.append((key, value))
         if pk is None:
-            if parent_pk is not False:
-                pk, pk_name = (
-                    (parent_pk, parent_pk.name)
-                    if parent_pk is not None
-                    else (
-                        IntegerField(primary_key=True),
-                        "id",
-                    )  # TODO(leosocy): AutoField
-                )
-            else:
-                pk = False
+            pk, pk_name = (
+                (parent_pk, parent_pk.name)
+                if parent_pk is not None
+                else (UUIDField(primary_key=True, default=uuid.uuid4), "id")
+            )
         elif isinstance(pk, CompositeKey):
             pk_name = "__composite_key__"
-        if pk is False:
-            raise ValueError("required primary key %s." % name)
-        cls._meta.set_primary_key(pk_name, pk)
 
+        cls._meta.set_primary_key(pk_name, pk)
         for name, field in fields:
             cls._meta.add_field(name, field)
-
         cls._index_manager.generate_indexes()
 
         exc_name = "%sDoesNotExist" % cls.__name__
@@ -210,7 +198,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         """
         无条件插入一批数据到backend，
         :param insert_list: a list/tuple, contains element like
-        {"name": "Sam"}, Person(name="Amy"), ...
+        {"name": "Sam"}, user(name="Amy"), ...
         :return: [ModelObject, ModelObject, ...]
         :rtype: list
         """
@@ -343,91 +331,93 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         return deleted
 
 
-class IndexDumper(object):
-    def dump(self):
-        pass
-
-    def original(self):
-        pass
-
-
-class RowSplitterFactory(object):
-    _splitters = {}
-
-    @staticmethod
-    def create(model, index):
-        cached = RowSplitterFactory._splitters.get((model, index), None)
-        if cached is not None:
-            return cached
-        splitter = RowSplitter(model, index)
-        RowSplitterFactory._splitters[(model, index)] = splitter
-        return splitter
-
-
-class RowSplitter(object):
-    def __init__(self, model, index):
-        self._model = model
-        self._index = index
-        self._all_fields = model._meta.fields.values()
-        self._index_fields = index.fields
-        self._defaults = model._meta.defaults
-
-    def split(self, row, skip_payload=False, skip_key_error=False):
-        fields = self._index_fields if skip_payload else self._all_fields
-        index = {}
-        payload = {}
-        for field in fields:
-            try:
-                val = row[field.name]
-            except KeyError:
-                if skip_key_error:
-                    continue
-                if field in self._defaults:
-                    val = self._defaults[field]
-                    if callable(val):
-                        val = val()
-                elif field.null:
-                    continue
-                else:
-                    raise ValueError("missing value for '%s'." % field)
-            if field in self._index_fields:
-                index[field.name] = val
-            else:
-                payload[field.name] = val
-        return index, payload
-
-
 class _RowScanner(object):
     """
     input should be a tuple or list, format like:
     [
-        (Person, [{"name": "Sam"}, {"name": "Amy"}]),
+        (user, [{"name": "Sam"}, {"name": "Amy"}]),
         Note(content="foo"), Note(content="bar"),
     ]
     """
 
     @staticmethod
-    def _parse_to_model_rows(input):
-        if isinstance(input, Model):
-            model = type(input)
-            rows = [input.__data__]
+    def _parse_to_model_rows(ele):
+        if isinstance(ele, Model):
+            model = type(ele)
+            rows = [ele.__data__]
         elif (
-            isinstance(input, tuple)
-            and isinstance(input[0], ModelBase)
-            and isinstance(input[1], (tuple, list))
+            isinstance(ele, tuple)
+            and isinstance(ele[0], ModelBase)
+            and isinstance(ele[1], (tuple, list))
         ):
-            model = input[0]
-            rows = input[1]
+            model = ele[0]
+            rows = ele[1]
         else:
-            raise TypeError("unsupported input format")
+            raise TypeError("unsupported element format")
         return model, rows
 
     @staticmethod
-    def scan(inputs):
-        for input in inputs:
-            model, rows = _RowScanner._parse_to_model_rows(input)
+    def scan(elements):
+        for ele in elements:
+            model, rows = _RowScanner._parse_to_model_rows(ele)
             for row in rows:
                 yield model, row
+
+
+class CacheBuilder(object):
+    def __init__(self, model, row=None, instance=None):
+        self.model = model
+        if instance is None:
+            instance = model(**(row or {}))
+        self._instance = instance
+        self._index = model._index_manager.get_primary_key_index()
+
+    def set_instance(self, instance):
+        self._instance = instance
+
+    def get_instance(self):
+        return self._instance
+
+    def _get_field_value(self, field, set_attribute=True, nullable=False):
+        val = self._instance.__data__.get(field.name)
+        if val is not None:
+            return val
+        if field in self.model._meta.defaults:
+            val = self.model._meta.defaults[field]
+            if callable(val):
+                val = val()
+            if set_attribute:
+                setattr(self._instance, field.name, val)
+            return val
+        elif nullable and field.null:
+            return None
+        else:
+            raise ValueError("missing value for %s" % field)
+
+    def build_key(self):
+        values = []
+        for field in self._index.fields:
+            value = self._get_field_value(field)
+            values.append(field.cache_value(value))
+        return self._index.formatter.f(*values)
+
+    def build_payload(self):
+        payload = {}
+        for name, field in self.model._meta.fields.items():
+            if name in self._index.field_names:
+                continue
+            value = self._get_field_value(field, nullable=True)
+            if value is not None:
+                payload.update({name: field.cache_value(value)})
+        return self.model._meta.serializer.dumps(payload)
+
+    def load_payload(self, s, on_conflict_update=True):
+        payload = self.model._meta.serializer.loads(s)
+        for name, value in payload.items():
+            field = self.model._meta.fields.get(name, None)
+            if field is not None:
+                if self._instance.__data__.get(name) is None or on_conflict_update:
+                    setattr(self._instance, name, field.python_value(value))
 
 
 class Insert(object):
@@ -437,122 +427,84 @@ class Insert(object):
         Insert inserts data list in batches, support different model.
 
         :param insert_list:
-        [(Person, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
+        [(user, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
         """
         self._insert_list = insert_list
 
     def execute(self):
-        instances = []
-        group_by_meta = defaultdict(dict)
+        builders = []
+        group_by_meta = defaultdict(list)
         for model, row in _RowScanner.scan(self._insert_list):
-            instance = model(**row)
-            row = instance.__data__.copy()
-            matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
-            if not indexes:
-                index = model._index_manager.get_primary_key_index()
-            else:
-                index = matcher.select_index(indexes)
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, payload_data = splitter.split(row)
+            builder = CacheBuilder(model, row=row)
+            builders.append(builder)
             meta = model._meta
-            cache_key = index.make_cache_key(**index_data)
-            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
-            )
-            for k, v in chain(index_data.items(), payload_data.items()):
-                setattr(instance, k, v)
-            instances.append(instance)
-        for (backend, ttl), mapping in group_by_meta.items():
-            backend.set_many(mapping, ttl=ttl)
-        return instances
+            group_by_meta[(meta.backend, meta.ttl)].append(builder)
+        for (backend, ttl), bs in group_by_meta.items():
+            backend.set_many({b.build_key(): b.build_payload() for b in bs}, ttl=ttl)
+        return [builder.get_instance() for builder in builders]
 
 
 class Query(object):
     def __init__(self, query_list):
         """
         :param query_list:
-        [(Person, ({"name": "Sam"}, {"name": "Amy"}),
+        [(user, ({"name": "Sam"}, {"name": "Amy"}),
          (Note, ({"id": 1},))]
         """
         self._query_list = query_list
 
     def execute(self):
-        instances = []
+        builders = []
         group_by_backend = defaultdict(list)
         for model, row in _RowScanner.scan(self._query_list):
-            group_by_backend[model._meta.backend].append((model, row))
-        for backend, pairs in group_by_backend.items():
-            cache_keys = []
-            for model, row in pairs:
-                instance = model(**row)
-                row = instance.__data__.copy()
-                matcher = IndexMatcher(model)
-                indexes = matcher.match_indexes_for(**row)
-                if not indexes:
-                    raise ValueError("can't match any index for row %s" % row)
-                index = matcher.select_index(indexes)
-                splitter = RowSplitterFactory.create(model, index)
-                index_data, _ = splitter.split(row, skip_payload=True)
-                cache_key = index.make_cache_key(**index_data)
-                cache_keys.append(cache_key)
-                for k, v in index_data.items():
-                    setattr(instance, k, v)
-                instances.append(instance)
-            for val, (idx, inst) in zip(
-                backend.get_many(*cache_keys), enumerate(instances)
-            ):
-                if val is not None:
-                    val = inst._meta.serializer.loads(val)
-                    for k, v in val.items():
-                        setattr(inst, k, model._meta.fields[k].python_value(v))
-                else:
-                    instances[idx] = None
-        return instances
+            builder = CacheBuilder(model, row=row)
+            builders.append(builder)
+            group_by_backend[model._meta.backend].append(builder)
+        for backend, bs in group_by_backend.items():
+            cache_keys = [b.build_key() for b in bs]
+            payloads = backend.get_many(*cache_keys)
+            for payload, b in zip(payloads, bs):
+                if payload is None:
+                    b.set_instance(None)
+                    continue
+                b.load_payload(payload)
+        return [builder.get_instance() for builder in builders]
 
 
 class Update(object):
     def __init__(self, update_list):
         """
         :param update_list:
-        [(Person, ({"name": "Sam", "height": 180}, {"name": "Amy", "married": True})),
-         Note(id=1, content="foo", Person(name="Bob", email="bob@outlook.com")]
+        [(user, ({"name": "Sam", "height": 180}, {"name": "Amy", "married": True})),
+         Note(id=1, content="foo", user(name="Bob", email="bob@outlook.com")]
         """
         self._update_list = update_list
 
     def execute(self):
-        original_instances = Query(self._update_list).execute()
-        instances = []
-        group_by_meta = defaultdict(dict)
-        for (model, row), original_instance in zip(
-            _RowScanner.scan(self._update_list), original_instances
-        ):
-            if original_instance is None:
-                instances.append(None)
-                continue
-            instance = model(**row)
-            row = instance.__data__.copy()
-            matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
-            if not indexes:
-                raise ValueError("can't match any index for row %s" % row)
-            index = matcher.select_index(indexes)
-            for k, v in original_instance.__data__.items():
-                if k not in index.field_names and k not in row:
-                    row.update({k: v})
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, payload_data = splitter.split(row)
+        builders = []
+        group_by_backend = defaultdict(list)
+        group_by_meta = defaultdict(list)
+        for model, row in _RowScanner.scan(self._update_list):
+            builder = CacheBuilder(model, row=row)
+            builders.append(builder)
             meta = model._meta
-            cache_key = index.make_cache_key(**index_data)
-            group_by_meta[(meta.backend, meta.ttl)][cache_key] = meta.serializer.dumps(
-                {k: meta.fields[k].cache_value(v) for k, v in payload_data.items()}
-            )
-            for k, v in chain(index_data.items(), payload_data.items()):
-                setattr(instance, k, v)
-            instances.append(instance)
-        for (backend, ttl), mapping in group_by_meta.items():
+            group_by_backend[meta.backend].append(builder)
+            group_by_meta[(meta.backend, meta.ttl)].append(builder)
+        for backend, bs in group_by_backend.items():
+            cache_keys = [b.build_key() for b in bs]
+            payloads = backend.get_many(*cache_keys)
+            for payload, b in zip(payloads, bs):
+                if payload is None:
+                    b.set_instance(None)
+                    continue
+                b.load_payload(payload, on_conflict_update=False)
+        for (backend, ttl), bs in group_by_meta.items():
+            mapping = {}
+            for b in bs:
+                if b.get_instance() is not None:
+                    mapping[b.build_key()] = b.build_payload()
             backend.set_many(mapping, ttl=ttl)
-        return instances
+        return [builder.get_instance() for builder in builders]
 
 
 class Delete(object):
@@ -562,20 +514,11 @@ class Delete(object):
     def execute(self):
         group_by_backend = defaultdict(list)
         for model, row in _RowScanner.scan(self._delete_list):
-            instance = model(**row)
-            row = instance.__data__.copy()
-            matcher = IndexMatcher(model)
-            indexes = matcher.match_indexes_for(**row)
-            if not indexes:
-                raise ValueError("can't match any index for row %s" % row)
-            index = matcher.select_index(indexes)
-            splitter = RowSplitterFactory.create(model, index)
-            index_data, _ = splitter.split(row, skip_payload=True)
-            cache_key = index.make_cache_key(**index_data)
-            group_by_backend[model._meta.backend].append(cache_key)
+            builder = CacheBuilder(model, row=row)
+            group_by_backend[model._meta.backend].append(builder)
         return all(
-            backend.delete_many(*cache_keys)
-            for backend, cache_keys in group_by_backend.items()
+            backend.delete_many(*[b.build_key() for b in bs])
+            for backend, bs in group_by_backend.items()
         )
 
 
@@ -616,11 +559,3 @@ class ModelUpdate(_ModelOpHelper, Update):
 class ModelDelete(_ModelOpHelper, Delete):
     def execute(self):
         return super(_ModelOpHelper, self).execute()
-
-
-# NOTE(leosocy):
-#  1. IndexMatcher 根据query，生成所有匹配的indexes，交给调用者决定如何使用索引。
-#  2. Where 根据index及传入的query，分离index string以及剩余的payload。其中index需要包括convert(cache_value)逻辑。
-#  3. Payloader to_cache, from_cache。
-#   - 根据传入的query，调用cache_value生成需要保存到cache backend的值。
-#   - 根据传入的bytes，调用python_value生成dict。

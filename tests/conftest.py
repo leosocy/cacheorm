@@ -2,7 +2,7 @@ import os
 
 import pytest
 from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
-from cacheorm.fields import BooleanField, FloatField, IntegerField, StringField
+from cacheorm.fields import BooleanField, FloatField, StringField
 from cacheorm.model import Model
 from cacheorm.serializers import (
     ProtobufSerializer,
@@ -72,24 +72,24 @@ def serializer(registry, request):
 
 
 @pytest.fixture()
-def person_protobuf_serializer(registry):
-    from .protos import person_pb2
+def user_protobuf_serializer(registry):
+    from .protos import user_pb2
 
-    registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
-    yield registry.get_by_name("protobuf.person")
-    registry.unregister("protobuf.person")
+    registry.register("protobuf.user", ProtobufSerializer(user_pb2.User))
+    yield registry.get_by_name("protobuf.user")
+    registry.unregister("protobuf.user")
 
 
 @pytest.fixture()
-def person():
-    from .protos import person_pb2
+def user_data():
+    from .protos import user_pb2
 
     return {
         "name": "leosocy",
         "email": "leosocy@gmail.com",
         "phones": [
-            {"number": "123", "type": person_pb2.Person.PhoneType.HOME},
-            {"number": "456", "type": person_pb2.Person.PhoneType.MOBILE},
+            {"number": "123", "type": user_pb2.User.PhoneType.HOME},
+            {"number": "456", "type": user_pb2.User.PhoneType.MOBILE},
         ],
     }
 
@@ -106,40 +106,11 @@ def base_model(redis_client, registry):
 
 
 @pytest.fixture()
-def person_model(base_model):
-    class Person(base_model):
+def user_model(base_model):
+    class User(base_model):
         name = StringField(primary_key=True)
         height = FloatField()
         married = BooleanField(default=False)
         email = StringField(null=True)
 
-    return Person
-
-
-@pytest.fixture()
-def noop_person_model():
-    class Person(Model):
-        name = StringField(primary_key=True)
-        height = FloatField()
-        married = BooleanField(default=False)
-        email = StringField(null=True)
-
-        class Meta:
-            backend = None
-            serializer = None
-
-    return Person
-
-
-@pytest.fixture()
-def note_model(base_model):
-    class Note(base_model):
-        id = IntegerField(primary_key=True)
-        author_id = StringField()
-        title = StringField()
-        content = StringField(default="")
-
-        class Meta:
-            ttl = 24 * 3600
-
-    return Note
+    return User

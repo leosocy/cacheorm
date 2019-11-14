@@ -1,29 +1,34 @@
+import cacheorm as co
 import pytest
-from cacheorm import IndexManager
-from cacheorm.fields import StringField
-from cacheorm.index import PrimaryKeyIndex
 
 
-def test_primary_key_index_default_formatter(noop_person_model):
-    assert isinstance(getattr(noop_person_model, "_index_manager", None), IndexManager)
-    index = noop_person_model._index_manager.get_primary_key_index()
-    assert isinstance(index, PrimaryKeyIndex)
-    key = index.make_cache_key(name="Sam")
-    assert "Sam" in key and noop_person_model._meta.name in key
-    with pytest.raises(KeyError):
-        index.make_cache_key(missing="unknown")
+class NoopModel(co.Model):
+    class Meta:
+        backend = None
+        serializer = None
 
 
-def test_primary_key_index_specify_formatter(noop_person_model):
-    formatter = "Student.%s"
+def test_primary_key_index_default_formatter():
+    class Test(NoopModel):
+        id = co.IntegerField(primary_key=True)
 
-    class Student(noop_person_model):
-        name = StringField(primary_key=True, index_formatter=formatter)
-
-    index = Student._index_manager.get_primary_key_index()
-    key = index.make_cache_key(name="Sam")
-    assert formatter % ("Sam",) == key
+    key = co.CacheBuilder(Test, row={"id": 1}).build_key()
+    assert "1" in key and Test._meta.name in key
+    with pytest.raises(ValueError):
+        co.CacheBuilder(Test, row=None).build_key()
 
 
-def test_composite_primary_key_index(noop_person_model):
-    pass
+def test_primary_key_index_string_formatter():
+    class Test(NoopModel):
+        id = co.IntegerField(primary_key=True, index_formatter="t.%d")
+
+    assert "t.1" == co.CacheBuilder(Test, row={"id": 1}).build_key()
+
+
+def test_primary_key_index_callable_formatter():
+    class Test(NoopModel):
+        id = co.IntegerField(
+            primary_key=True, index_formatter=lambda *values: "callable.t.%d" % values
+        )
+
+    assert "callable.t.1" == co.CacheBuilder(Test, row={"id": 1}).build_key()

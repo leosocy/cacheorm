@@ -3,7 +3,7 @@ import uuid
 
 try:
     import shortuuid
-except ImportError:
+except ImportError:  # pragma: no cover
     shortuuid = None
 
 
@@ -68,10 +68,8 @@ class ObjectIdAccessor(object):
 
 
 class Field(object):
-    # TODO(leosocy): support auto_increment
     accessor_class = FieldAccessor
 
-    # TODO(leosocy): support callable index_formatter
     def __init__(
         self,
         null=False,
@@ -120,10 +118,7 @@ class UUIDField(Field):
     def cache_value(self, value):
         if isinstance(value, uuid.UUID):
             return value.hex
-        try:
-            return uuid.UUID(value).hex
-        except ValueError:
-            return value
+        return uuid.UUID(value).hex
 
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
@@ -133,17 +128,14 @@ class UUIDField(Field):
 
 class ShortUUIDField(UUIDField):
     def __init__(self, *args, **kwargs):
-        if shortuuid is None:
+        if shortuuid is None:  # pragma: no cover
             raise ImportError("shortuuid not installed!")
         super(ShortUUIDField, self).__init__(*args, **kwargs)
 
     def cache_value(self, value):
         if isinstance(value, uuid.UUID):
             return shortuuid.encode(value)
-        try:
-            return shortuuid.encode(uuid.UUID(value))
-        except ValueError:
-            return value
+        return shortuuid.encode(uuid.UUID(value))
 
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
@@ -153,6 +145,20 @@ class ShortUUIDField(UUIDField):
 
 class IntegerField(Field):
     adapt = int
+
+
+class EnumField(Field):
+    def __init__(self, enum_class, *args, **kwargs):
+        super(EnumField, self).__init__(*args, **kwargs)
+        self.enum_class = enum_class
+
+    def cache_value(self, value):
+        if isinstance(value, self.enum_class):
+            return value.value
+        return value
+
+    def python_value(self, value):
+        return value if value is None else self.enum_class(value)
 
 
 class FloatField(Field):
@@ -169,25 +175,17 @@ class DecimalField(FloatField):
         super(DecimalField, self).__init__(*args, **kwargs)
 
     def cache_value(self, value):
-        if not value:
-            if value is None:
-                return None
-            value = decimal.Decimal()
-        if self.auto_round:
+        if value is not None and self.auto_round:
+            value = decimal.Decimal(str(value or 0))
             exp = decimal.Decimal(10) ** (-self.decimal_places)
             rounding = self.rounding
-            value = decimal.Decimal(str(value)).quantize(exp, rounding=rounding)
+            value = value.quantize(exp, rounding=rounding)
         return super(DecimalField, self).cache_value(value)
 
     def python_value(self, value):
-        if value is None:
-            return value
         if isinstance(value, decimal.Decimal):
             return value
-        return decimal.Decimal(str(value))
-
-
-# TODO(leosocy): EnumField
+        return value if value is None else decimal.Decimal(str(value))
 
 
 class BooleanField(Field):
@@ -198,7 +196,7 @@ class StringField(Field):
     def adapt(self, value):
         if isinstance(value, str):
             return value
-        if isinstance(value, bytes):
+        if isinstance(value, (bytes, bytearray)):
             return value.decode(encoding="utf-8")
         return str(value)
 
@@ -206,7 +204,7 @@ class StringField(Field):
 class ForeignKeyField(Field):
     accessor_class = ForeignAccessor
 
-    # TODO(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
+    # NOTE(leosocy): 暂时不支持指定字段，因为目前query只能通过model的主键，所以目前默认外键就是关联model的主键
     #  backref也不支持，原因相同。
     # TODO(leosocy): support cascade_delete
     def __init__(self, model, object_id_name=None, *args, **kwargs):
@@ -214,9 +212,6 @@ class ForeignKeyField(Field):
         self.rel_model = model
         self.rel_field = None
         self.object_id_name = object_id_name
-
-    def adapt(self, value):
-        return self.rel_field.adapt(value)
 
     def cache_value(self, value):
         if isinstance(value, self.rel_model):

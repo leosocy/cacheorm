@@ -17,7 +17,7 @@ def test_registry_register_unregister(registry):
         registry.unregister("json")
 
 
-def test_normal_serializers_dumps_loads(serializer, person):
+def test_normal_serializers_dumps_loads(serializer, user_data):
     objs = (
         1,
         1.23,
@@ -27,7 +27,7 @@ def test_normal_serializers_dumps_loads(serializer, person):
         None,
         [1, 2, 3],
         {"foo": 1, "bar": [1, 2, 3], "测试": {}},
-        person,
+        user_data,
     )
     for obj in objs:
         s = serializer.dumps(obj)
@@ -37,15 +37,15 @@ def test_normal_serializers_dumps_loads(serializer, person):
         assert obj == o
 
 
-def test_protobuf_serializer_dumps_loads(person_protobuf_serializer, person):
-    from .protos import person_pb2
+def test_protobuf_serializer_dumps_loads(user_protobuf_serializer, user_data):
+    from .protos import user_pb2
 
-    person_pb = person_pb2.Person(**person)
-    for obj in (person_pb, person):
-        s = person_protobuf_serializer.dumps(obj)
+    user_pb = user_pb2.User(**user_data)
+    for obj in (user_pb, user_data):
+        s = user_protobuf_serializer.dumps(obj)
         assert s
         assert isinstance(s, bytes)
-        o = person_protobuf_serializer.loads(s)
-        assert person_pb == o
+        o = user_protobuf_serializer.loads(s)
+        assert user_pb == o
     with pytest.raises(TypeError):
-        person_protobuf_serializer.dumps(1)
+        user_protobuf_serializer.dumps(1)

@@ -40,10 +40,10 @@
 All serializers are registered to a registry singleton.
 Provide `json`, `msgpack`, `pickle` three preset serializers.
 
-You can register your own serializer, such as a Protobuf serializer with a `Person` message.
+You can register your own serializer, such as a Protobuf serializer with a `User` message.
 
 ```python
-registry.register("protobuf.person", ProtobufSerializer(person_pb2.Person))
+registry.register("protobuf.user", ProtobufSerializer(user_pb2.User))
 ```
 
 ## Model

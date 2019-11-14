@@ -1,5 +1,6 @@
 from .backends import *
 from .fields import *
+from .index import *
 from .model import *
 from .serializers import *
 

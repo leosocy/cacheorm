@@ -1,4 +1,5 @@
 import decimal
+import enum
 import uuid
 
 import cacheorm as co
@@ -20,6 +21,28 @@ def test_integer_field():
         for row in IntModel.query_many({"id": i1.id}, {"id": i2.id}).execute()
     ]
     assert [(1, None), (2, 3)] == values
+
+
+class E(enum.Enum):
+    A = 1
+    B = "b"
+    C = 2.3
+
+
+class EnumModel(TestModel):
+
+    value = co.EnumField(E)
+    value_null = co.EnumField(E, null=True)
+
+
+def test_enum_field():
+    e1 = EnumModel.create(value=1)
+    e2 = EnumModel.create(value="b", value_null=E.C)
+    values = [
+        (row.value, row.value_null)
+        for row in EnumModel.query_many({"id": e1.id}, {"id": e2.id}).execute()
+    ]
+    assert [(E.A, None), (E.B, E.C)] == values
 
 
 class FloatModel(TestModel):
