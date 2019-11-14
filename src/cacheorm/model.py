@@ -1,7 +1,8 @@
 import copy
+import uuid
 from collections import defaultdict
 
-from .fields import CompositeKey, Field, FieldAccessor, IntegerField
+from .fields import CompositeKey, Field, FieldAccessor, UUIDField
 from .index import IndexManager
 from .types import with_metaclass
 
@@ -110,26 +111,17 @@ class ModelBase(type):
                 else:
                     fields.append((key, value))
         if pk is None:
-            if parent_pk is not False:
-                pk, pk_name = (
-                    (parent_pk, parent_pk.name)
-                    if parent_pk is not None
-                    else (
-                        IntegerField(primary_key=True),
-                        "id",
-                    )  # TODO(leosocy): AutoField
-                )
-            else:
-                pk = False
+            pk, pk_name = (
+                (parent_pk, parent_pk.name)
+                if parent_pk is not None
+                else (UUIDField(primary_key=True, default=uuid.uuid4), "id")
+            )
         elif isinstance(pk, CompositeKey):
             pk_name = "__composite_key__"
-        if pk is False:
-            raise ValueError("required primary key %s." % name)
-        cls._meta.set_primary_key(pk_name, pk)
 
+        cls._meta.set_primary_key(pk_name, pk)
         for name, field in fields:
             cls._meta.add_field(name, field)
-
         cls._index_manager.generate_indexes()
 
         exc_name = "%sDoesNotExist" % cls.__name__
@@ -206,7 +198,7 @@ class Model(with_metaclass(ModelBase, name=MODEL_BASE_NAME)):
         """
         无条件插入一批数据到backend，
         :param insert_list: a list/tuple, contains element like
-        {"name": "Sam"}, Person(name="Amy"), ...
+        {"name": "Sam"}, user(name="Amy"), ...
         :return: [ModelObject, ModelObject, ...]
         :rtype: list
         """
@@ -343,7 +335,7 @@ class _RowScanner(object):
     """
     input should be a tuple or list, format like:
     [
-        (Person, [{"name": "Sam"}, {"name": "Amy"}]),
+        (user, [{"name": "Sam"}, {"name": "Amy"}]),
         Note(content="foo"), Note(content="bar"),
     ]
     """
@@ -361,7 +353,7 @@ class _RowScanner(object):
             model = ele[0]
             rows = ele[1]
         else:
-            raise TypeError("unsupported input format")
+            raise TypeError("unsupported element format")
         return model, rows
 
     @staticmethod
@@ -385,9 +377,6 @@ class CacheBuilder(object):
 
     def get_instance(self):
         return self._instance
-
-    def set_index(self, index):
-        self._index = index
 
     def _get_field_value(self, field, set_attribute=True, nullable=False):
         val = self._instance.__data__.get(field.name)
@@ -438,7 +427,7 @@ class Insert(object):
         Insert inserts data list in batches, support different model.
 
         :param insert_list:
-        [(Person, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
+        [(user, ({"name": "Sam"}, {"name": "Amy"})), Note(content="foo")]
         """
         self._insert_list = insert_list
 
@@ -459,7 +448,7 @@ class Query(object):
     def __init__(self, query_list):
         """
         :param query_list:
-        [(Person, ({"name": "Sam"}, {"name": "Amy"}),
+        [(user, ({"name": "Sam"}, {"name": "Amy"}),
          (Note, ({"id": 1},))]
         """
         self._query_list = query_list
@@ -486,8 +475,8 @@ class Update(object):
     def __init__(self, update_list):
         """
         :param update_list:
-        [(Person, ({"name": "Sam", "height": 180}, {"name": "Amy", "married": True})),
-         Note(id=1, content="foo", Person(name="Bob", email="bob@outlook.com")]
+        [(user, ({"name": "Sam", "height": 180}, {"name": "Amy", "married": True})),
+         Note(id=1, content="foo", user(name="Bob", email="bob@outlook.com")]
         """
         self._update_list = update_list
 

@@ -36,8 +36,8 @@ class EnumModel(TestModel):
 
 
 def test_enum_field():
-    e1 = EnumModel.create(value=E.A)
-    e2 = EnumModel.create(value=E.B, value_null=E.C)
+    e1 = EnumModel.create(value=1)
+    e2 = EnumModel.create(value="b", value_null=E.C)
     values = [
         (row.value, row.value_null)
         for row in EnumModel.query_many({"id": e1.id}, {"id": e2.id}).execute()
