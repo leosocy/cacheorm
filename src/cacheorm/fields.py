@@ -250,7 +250,19 @@ class DateTimeField(_BaseFormattedField):
 
 
 class DateTimeTZField(Field):
-    formats = ["%Y-%m-%dT%H:%M:%S%z"]
+    formats = ["%Y-%m-%dT%H:%M:%S.%f%z"]
+
+    def cache_value(self, value):
+        if not isinstance(value, datetime.datetime):
+            raise ValueError("datetime instance required")
+        if value.tzinfo is None:
+            raise ValueError("missing timezone")
+        return value.astimezone(datetime.timezone.utc).strftime(self.formats[0])
+
+    def python_value(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats)
+        return value
 
 
 class DateField(Field):
