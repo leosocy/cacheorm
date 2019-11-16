@@ -164,6 +164,16 @@ def test_date_fields():
         DateModel.create(d="2020 01 01")
 
 
+class CustomDateTimeModel(TestModel):
+    dt = co.DateTimeField(formats=["%m/%d/%Y %I:%M %p", "%Y-%m-%d %H:%M:%S"])
+
+
+def test_date_time_custom_format():
+    m = CustomDateTimeModel.create(dt="01/01/2020 10:11 AM")
+    m_cache = CustomDateTimeModel.get_by_id(m.id)
+    assert datetime.datetime(2020, 1, 1, 10, 11, 0) == m_cache.dt
+
+
 class DTTZModel(TestModel):
     dt = co.DateTimeTZField()
 
