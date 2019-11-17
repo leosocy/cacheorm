@@ -209,7 +209,7 @@ class TSModel(TestModel):
 
 def test_timestamp_field():
     dt = datetime.datetime(2020, 1, 1, 10, 11, 12).replace(microsecond=12345)
-    ts = TSModel.create(s=dt, ms=dt, us=dt, u=dt)
+    ts = TSModel.create(s=dt, ms=dt, us=dt, utc=dt)
     ts_cache = TSModel.get_by_id(ts.id)
     assert dt.replace(microsecond=0) == ts_cache.s == ts_cache.utc
     assert dt.replace(microsecond=12000) == ts_cache.ms
@@ -241,3 +241,45 @@ def test_composite_key():
     assert c.data == CompositeModel.get_by_id(("e", "f")).data
     CompositeModel.delete_by_id(("e", "f"))
     assert CompositeModel.get_or_none(first="e", last="f") is None
+
+
+class StructModel(TestModel):
+    class Config(object):
+        def __init__(self, min_value, max_value, mapping):
+            self.min_value = min_value
+            self.max_value = max_value
+            self.mapping = mapping
+
+        def serialize(self):
+            return self.min_value, self.max_value, self.mapping
+
+        @classmethod
+        def deserialize(cls, value):
+            return cls(*value)
+
+    config = co.StructField(
+        serializer=Config.serialize, deserializer=Config.deserialize
+    )
+
+
+def test_struct_filed():
+    config = StructModel.Config(1, 10, {"foo": "bar"})
+    sm = StructModel.create(config=config)
+    sm_cache = StructModel.get_by_id(sm.id)
+    assert config.min_value == sm_cache.config.min_value
+    assert config.max_value == sm_cache.config.max_value
+    assert config.mapping == sm_cache.config.mapping
+
+
+class JSONModel(TestModel):
+    info = co.JSONField(default={})
+
+
+def test_json_field():
+    info = {"name": "bob", "phone_numbers": [1, 2]}
+    j1 = JSONModel.create(info=info)
+    j2 = JSONModel.create()
+    values = [
+        row.info for row in JSONModel.query_many({"id": j1.id}, {"id": j2.id}).execute()
+    ]
+    assert [info, {}] == values

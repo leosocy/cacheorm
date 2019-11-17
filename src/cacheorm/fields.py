@@ -1,6 +1,10 @@
+import calendar
 import datetime
 import decimal
+import json
+import time
 import uuid
+from functools import partial
 
 try:
     import shortuuid
@@ -214,7 +218,7 @@ class BinaryField(Field):
      When using other serializers, you can set safe=False
     """
 
-    def __init__(self, *args, safe=True, **kwargs):
+    def __init__(self, safe=True, *args, **kwargs):
         super(BinaryField, self).__init__(*args, **kwargs)
         self.safe = safe
 
@@ -321,14 +325,17 @@ class TimestampField(Field):
         super(TimestampField, self).__init__(*args, **kwargs)
 
     def cache_value(self, value):
-        if isinstance(value, datetime.date):
-            value = datetime.datetime(value.year, value.month, value.day)
         if isinstance(value, datetime.datetime):
-            if not self.utc:
-                value = value.astimezone(datetime.timezone.utc)
-            timestamp = value.timestamp()
+            pass
+        elif isinstance(value, datetime.date):
+            value = datetime.datetime(value.year, value.month, value.day)
         else:
-            timestamp = value
+            return int(round(value))
+        if self.utc:
+            timestamp = calendar.timegm(value.utctimetuple())
+        else:
+            timestamp = time.mktime(value.timetuple())
+        timestamp += value.microsecond * 1e-6
         if self.resolution > 1:
             timestamp *= self.resolution
         return int(round(timestamp))
@@ -340,29 +347,39 @@ class TimestampField(Field):
         else:
             microseconds = 0
         if self.utc:
-            value = datetime.datetime.utcfromtimestamp(microseconds)
+            value = datetime.datetime.utcfromtimestamp(value)
         else:
-            value = datetime.datetime.fromtimestamp(microseconds)
+            value = datetime.datetime.fromtimestamp(value)
         if microseconds:
             value = value.replace(microsecond=microseconds)
         return value
 
 
 class StructField(Field):
-    def __init__(self, serializer, deserializer, *args, **kwargs):
+    serializer = None
+    deserializer = None
+
+    def __init__(self, serializer=None, deserializer=None, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
-        self.se = serializer
-        self.de = deserializer
+        if serializer is not None:
+            self.serializer = serializer
+        if deserializer is not None:
+            self.deserializer = deserializer
 
     def cache_value(self, value):
-        return self.se(value)
+        if self.serializer is not None:
+            return self.serializer(value)
+        return value
 
     def python_value(self, value):
-        return self.de(value)
+        if self.deserializer is not None:
+            return self.deserializer(value)
+        return value
 
 
 class JSONField(StructField):
-    pass
+    serializer = partial(json.dumps, separators=(",", ":"))
+    deserializer = partial(json.loads)
 
 
 class ForeignKeyField(Field):
