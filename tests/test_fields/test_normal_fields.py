@@ -200,6 +200,22 @@ def test_date_time_tz_field():
     assert m2_cache.dt.tzinfo == datetime.timezone.utc
 
 
+class TSModel(TestModel):
+    s = co.TimestampField()
+    ms = co.TimestampField(resolution=3)
+    us = co.TimestampField(resolution=10 ** 6)
+    utc = co.TimestampField(null=True, utc=True)
+
+
+def test_timestamp_field():
+    dt = datetime.datetime(2020, 1, 1, 10, 11, 12).replace(microsecond=12345)
+    ts = TSModel.create(s=dt, ms=dt, us=dt, u=dt)
+    ts_cache = TSModel.get_by_id(ts.id)
+    assert dt.replace(microsecond=0) == ts_cache.s == ts_cache.utc
+    assert dt.replace(microsecond=12000) == ts_cache.ms
+    assert dt == ts_cache.us
+
+
 class CompositeModel(TestModel):
     first = co.StringField()
     last = co.StringField()

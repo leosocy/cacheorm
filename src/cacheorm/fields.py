@@ -299,8 +299,53 @@ class TimeField(Field):
         return str(self.adapt(value))
 
 
-class TimestampField(IntegerField):
-    pass
+class TimestampField(Field):
+    # second -> microsecond resolution
+    valid_resolutions = [10 ** i for i in range(7)]
+
+    def __init__(self, *args, **kwargs):
+        self.resolution = kwargs.pop("resolution", None)
+        if not self.resolution:
+            self.resolution = 1
+        elif self.resolution in range(2, 7):
+            self.resolution = 10 ** self.resolution
+        elif self.resolution not in self.valid_resolutions:
+            raise ValueError(
+                "TimestampField resolution must be one of: %s"
+                % ", ".join(map(str, self.valid_resolutions))
+            )
+        self.ticks_to_microsecond = 10 ** 6 // self.resolution
+        self.utc = bool(kwargs.pop("utc", False))
+        now_func = datetime.datetime.utcnow if self.utc else datetime.datetime.now
+        kwargs.setdefault("default", now_func)
+        super(TimestampField, self).__init__(*args, **kwargs)
+
+    def cache_value(self, value):
+        if isinstance(value, datetime.date):
+            value = datetime.datetime(value.year, value.month, value.day)
+        if isinstance(value, datetime.datetime):
+            if not self.utc:
+                value = value.astimezone(datetime.timezone.utc)
+            timestamp = value.timestamp()
+        else:
+            timestamp = value
+        if self.resolution > 1:
+            timestamp *= self.resolution
+        return int(round(timestamp))
+
+    def python_value(self, value):
+        if self.resolution > 1:
+            value, ticks = divmod(value, self.resolution)
+            microseconds = int(ticks * self.ticks_to_microsecond)
+        else:
+            microseconds = 0
+        if self.utc:
+            value = datetime.datetime.utcfromtimestamp(microseconds)
+        else:
+            value = datetime.datetime.fromtimestamp(microseconds)
+        if microseconds:
+            value = value.replace(microsecond=microseconds)
+        return value
 
 
 class StructField(Field):
