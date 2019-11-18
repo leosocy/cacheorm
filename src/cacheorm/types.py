@@ -1,7 +1,8 @@
 def to_bytes(value):
+    bytearray
     if value is None:
         return None
-    if isinstance(value, bytes):
+    if isinstance(value, (bytes, bytearray)):
         return value
     if isinstance(value, (int, float)):
         value = str(value)

@@ -1,3 +1,4 @@
+import base64
 import calendar
 import datetime
 import decimal
@@ -212,15 +213,24 @@ class StringField(Field):
 
 class BinaryField(Field):
     """
-    NOTE(leosocy): Since JSON and Protobuf serializer do not support binary,
-     So when using these serializers, you need to set safe=True,
-     then the binary will be encoded in base64.
-     When using other serializers, you can set safe=False
+    JSON/Protobuf serializer do not support binary data,
+    so when using these serializers, MUST set ensure_str=True, so that
+    the binary data is encoded into a base64 string to avoid serialization errors.
+    Otherwise, SHOULD set ensure_str=False to reduce byte size.
     """
 
-    def __init__(self, safe=True, *args, **kwargs):
+    def __init__(self, ensure_str=True, *args, **kwargs):
         super(BinaryField, self).__init__(*args, **kwargs)
-        self.safe = safe
+        self.ensure_str = ensure_str
+
+    def cache_value(self, value):
+        if isinstance(value, str):
+            value = value.encode("utf-8")
+        value = bytearray(value)
+        return base64.b64encode(value).decode("utf-8") if self.ensure_str else value
+
+    def python_value(self, value):
+        return base64.b64decode(value) if self.ensure_str else value
 
 
 def format_date_time(value, formats):
@@ -318,7 +328,6 @@ class TimestampField(Field):
                 "TimestampField resolution must be one of: %s"
                 % ", ".join(map(str, self.valid_resolutions))
             )
-        self.ticks_to_microsecond = 10 ** 6 // self.resolution
         self.utc = bool(kwargs.pop("utc", False))
         now_func = datetime.datetime.utcnow if self.utc else datetime.datetime.now
         kwargs.setdefault("default", now_func)
@@ -342,20 +351,15 @@ class TimestampField(Field):
 
     def python_value(self, value):
         if self.resolution > 1:
-            value, ticks = divmod(value, self.resolution)
-            microseconds = int(ticks * self.ticks_to_microsecond)
-        else:
-            microseconds = 0
+            value /= self.resolution
         if self.utc:
-            value = datetime.datetime.utcfromtimestamp(value)
-        else:
-            value = datetime.datetime.fromtimestamp(value)
-        if microseconds:
-            value = value.replace(microsecond=microseconds)
-        return value
+            return datetime.datetime.utcfromtimestamp(value)
+        return datetime.datetime.fromtimestamp(value)
 
 
 class StructField(Field):
+    # serializer/deserializer are bound methods when be called,
+    # so function must accept a `self` positional argument such as JSONField.
     serializer = None
     deserializer = None
 

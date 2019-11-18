@@ -142,6 +142,30 @@ def test_string_field():
     assert [("", None), ("foo", "bar")] == values
 
 
+class BinaryModel(TestModel):
+    value = co.BinaryField()
+    value_not_ensure = co.BinaryField(ensure_str=False, null=True)
+
+
+class MsgpackBinaryModel(BinaryModel):
+    class Meta:
+        serializer = co.MessagePackSerializer()
+
+
+def test_binary_field():
+    with pytest.raises(TypeError):
+        BinaryModel.create(value=b"\x00", value_not_ensure=b"\xff")
+    bm = BinaryModel.create(value=b"\x00")
+    bm_cache = BinaryModel.get_by_id(bm.id)
+    assert (b"\x00", None) == (bm_cache.value, bm_cache.value_not_ensure)
+
+
+def test_binary_field_msgpack():
+    bm = MsgpackBinaryModel.create(value=b"\x00", value_not_ensure=b"\xff")
+    bm_cache = MsgpackBinaryModel.get_by_id(bm.id)
+    assert (b"\x00", b"\xff") == (bm_cache.value, bm_cache.value_not_ensure)
+
+
 class DateModel(TestModel):
     d = co.DateField(null=True)
     t = co.TimeField(null=True)
