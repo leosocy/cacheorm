@@ -358,11 +358,6 @@ class TimestampField(Field):
 
 
 class StructField(Field):
-    # serializer/deserializer are bound methods when be called,
-    # so function must accept a `self` positional argument such as JSONField.
-    serializer = None
-    deserializer = None
-
     def __init__(self, serializer=None, deserializer=None, *args, **kwargs):
         super(StructField, self).__init__(*args, **kwargs)
         if serializer is not None:
@@ -382,8 +377,10 @@ class StructField(Field):
 
 
 class JSONField(StructField):
-    serializer = partial(json.dumps, separators=(",", ":"))
-    deserializer = partial(json.loads)
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("serializer", partial(json.dumps, separators=(",", ":")))
+        kwargs.setdefault("deserializer", json.loads)
+        super(JSONField, self).__init__(*args, **kwargs)
 
 
 class ForeignKeyField(Field):
