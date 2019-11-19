@@ -43,7 +43,9 @@ Provide `json`, `msgpack`, `pickle` three preset serializers.
 You can register your own serializer, such as a Protobuf serializer with a `User` message.
 
 ```python
-registry.register("protobuf.user", ProtobufSerializer(user_pb2.User))
+import cacheorm as co
+
+co.registry.register("protobuf.user", co.ProtobufSerializer(user_pb2.User))
 ```
 
 ## Model
@@ -62,8 +64,8 @@ class User(co.Model):
     email = co.StringField(null=True)
 
     class Meta:
-        backend = redis
-        serializer = co.registry.get_by_name("json")
+        backend = co.RedisBackend()
+        serializer = "json"
 
 
 class Article(co.Model):
@@ -75,8 +77,8 @@ class Article(co.Model):
     updated_at = co.DateTimeField(default=datetime.datetime.now)
 
     class Meta:
-        backend = redis
-        serializer = co.registry.get_by_name("protobuf.article")
+        backend = co.SimpleBackend()
+        serializer = "protobuf.article"
         ttl = 100 * 24 * 3600
 
 
@@ -87,8 +89,8 @@ class Collection(co.Model):
 
     class Meta:
         primary_key = co.CompositeKey("collector", "article", index_formatter="collection.%s.%d")
-        backend = memcached
-        serializer = co.registry.get_by_name("msgpack")
+        backend = co.MemcachedBackend()
+        serializer = "msgpack"
 ```
 
 #### Meta
@@ -171,19 +173,47 @@ article.delete_instance()
 
 ## Fields
 
+- UUIDField/ShortUUIDField
 - IntegerField
+- EnumField
+- BooleanField
 - FloatField
 - DecimalField
-- TODO: EnumField
-- UUIDField/ShortUUIDField
-- CompositeKey
-- BooleanField
 - StringField
+- BinaryField
+- DateTimeField
+- DateField
+- TimeField
+- TimestampField
+- StructField(serializer, deserializer)
+- JSONField
 - ForeignKeyField
-- TODO: StructField(serializer, deserializer)
-- TODO: DateTimeField
-- TODO: DateField
-- TODO: TimeField
-- TODO: TimestampField
+- CompositeKey
 
-## Signals
+## TODO LIST
+
+### Signals
+
+- [ ] pre_save
+- [ ] post_save
+- [ ] pre_delete
+- [ ] post_delete
+
+### Compatible payload
+
+- [ ] support changeable serializer
+
+### ModelHelper
+
+- [ ] preload foreign model instance
+- [ ] insert many different model instances
+
+### Bench
+
+- [ ] MEM bench
+- [ ] QPS bench
+
+### Docs
+
+- [ ] methods docstring
+- [ ] Quick start

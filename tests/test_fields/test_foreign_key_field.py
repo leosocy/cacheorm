@@ -1,17 +1,7 @@
 import cacheorm as co
 import pytest
 
-from .test_models import TestModel
-
-
-class User(TestModel):
-    username = co.StringField()
-    sub_user = co.ForeignKeyField("self", null=True, object_id_name="sub")
-
-
-class Article(TestModel):
-    author = co.ForeignKeyField(User)
-    content = co.StringField()
+from .base_models import Article, TestModel, User
 
 
 def test_create():

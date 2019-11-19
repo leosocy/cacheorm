@@ -19,10 +19,36 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='user.proto',
   package='test',
   syntax='proto3',
-  serialized_pb=_b('\n\nuser.proto\x12\x04test\"\xc7\x01\n\x04User\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\x05\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12&\n\x06phones\x18\x04 \x03(\x0b\x32\x16.test.User.PhoneNumber\x1a\x41\n\x0bPhoneNumber\x12\x0e\n\x06number\x18\x01 \x01(\t\x12\"\n\x04type\x18\x02 \x01(\x0e\x32\x14.test.User.PhoneType\"+\n\tPhoneType\x12\n\n\x06MOBILE\x10\x00\x12\x08\n\x04HOME\x10\x01\x12\x08\n\x04WORK\x10\x02\x62\x06proto3')
+  serialized_pb=_b('\n\nuser.proto\x12\x04test\"\xbd\x02\n\x04User\x12\n\n\x02id\x18\x01 \x01(\x04\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06height\x18\x03 \x01(\x02\x12\x0f\n\x07married\x18\x04 \x01(\x08\x12!\n\x06gender\x18\x05 \x01(\x0e\x32\x11.test.User.Gender\x12&\n\x06phones\x18\x06 \x03(\x0b\x32\x16.test.User.PhoneNumber\x12\x12\n\ncreated_at\x18\x07 \x01(\t\x1a\x41\n\x0bPhoneNumber\x12\x0e\n\x06number\x18\x01 \x01(\t\x12\"\n\x04type\x18\x02 \x01(\x0e\x32\x14.test.User.PhoneType\"+\n\x06Gender\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x08\n\x04MALE\x10\x01\x12\n\n\x06\x46\x45MALE\x10\x02\"+\n\tPhoneType\x12\n\n\x06MOBILE\x10\x00\x12\x08\n\x04HOME\x10\x01\x12\x08\n\x04WORK\x10\x02\x62\x06proto3')
 )
 
 
+
+_USER_GENDER = _descriptor.EnumDescriptor(
+  name='Gender',
+  full_name='test.User.Gender',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='UNKNOWN', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='MALE', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='FEMALE', index=2, number=2,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=250,
+  serialized_end=293,
+)
+_sym_db.RegisterEnumDescriptor(_USER_GENDER)
 
 _USER_PHONETYPE = _descriptor.EnumDescriptor(
   name='PhoneType',
@@ -45,8 +71,8 @@ _USER_PHONETYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=177,
-  serialized_end=220,
+  serialized_start=295,
+  serialized_end=338,
 )
 _sym_db.RegisterEnumDescriptor(_USER_PHONETYPE)
 
@@ -84,8 +110,8 @@ _USER_PHONENUMBER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=110,
-  serialized_end=175,
+  serialized_start=183,
+  serialized_end=248,
 )
 
 _USER = _descriptor.Descriptor(
@@ -96,30 +122,51 @@ _USER = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='name', full_name='test.User.name', index=0,
-      number=1, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='id', full_name='test.User.id', index=1,
-      number=2, type=5, cpp_type=1, label=1,
+      name='id', full_name='test.User.id', index=0,
+      number=1, type=4, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='email', full_name='test.User.email', index=2,
-      number=3, type=9, cpp_type=9, label=1,
+      name='name', full_name='test.User.name', index=1,
+      number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='phones', full_name='test.User.phones', index=3,
-      number=4, type=11, cpp_type=10, label=3,
+      name='height', full_name='test.User.height', index=2,
+      number=3, type=2, cpp_type=6, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='married', full_name='test.User.married', index=3,
+      number=4, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='gender', full_name='test.User.gender', index=4,
+      number=5, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='phones', full_name='test.User.phones', index=5,
+      number=6, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='created_at', full_name='test.User.created_at', index=6,
+      number=7, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
@@ -128,6 +175,7 @@ _USER = _descriptor.Descriptor(
   ],
   nested_types=[_USER_PHONENUMBER, ],
   enum_types=[
+    _USER_GENDER,
     _USER_PHONETYPE,
   ],
   options=None,
@@ -137,12 +185,14 @@ _USER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=21,
-  serialized_end=220,
+  serialized_end=338,
 )
 
 _USER_PHONENUMBER.fields_by_name['type'].enum_type = _USER_PHONETYPE
 _USER_PHONENUMBER.containing_type = _USER
+_USER.fields_by_name['gender'].enum_type = _USER_GENDER
 _USER.fields_by_name['phones'].message_type = _USER_PHONENUMBER
+_USER_GENDER.containing_type = _USER
 _USER_PHONETYPE.containing_type = _USER
 DESCRIPTOR.message_types_by_name['User'] = _USER
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)

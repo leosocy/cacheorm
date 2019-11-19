@@ -413,11 +413,12 @@ class CacheBuilder(object):
 
     def load_payload(self, s, on_conflict_update=True):
         payload = self.model._meta.serializer.loads(s)
-        for name, value in payload.items():
-            field = self.model._meta.fields.get(name, None)
-            if field is not None:
+        for name, field in self.model._meta.fields.items():
+            if name in payload:
                 if self._instance.__data__.get(name) is None or on_conflict_update:
-                    setattr(self._instance, name, field.python_value(value))
+                    setattr(self._instance, name, field.python_value(payload[name]))
+            # TODO: 如果使用Protobuf serializer，有可能字段值是不是null，但是payload中没有对应的值
+            #  因为Protobuf不会存储字段的默认值，例如int型值为0时。
 
 
 class Insert(object):

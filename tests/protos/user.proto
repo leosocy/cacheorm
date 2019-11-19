@@ -3,21 +3,27 @@ syntax = "proto3";
 package test;
 
 message User {
+    uint64 id = 1;
+    string name = 2;
+    float height = 3;
+    bool married = 4;
 
-    string name = 1;
-    int32 id = 2;
-    string email = 3;
+    enum Gender {
+        UNKNOWN = 0;
+        MALE = 1;
+        FEMALE = 2;
+    }
+    Gender gender = 5;
 
     enum PhoneType {
         MOBILE = 0;
-        HOME = 1;
-        WORK = 2;
+        HOME = 10;
+        WORK = 20;
     }
-
     message PhoneNumber {
         string number = 1;
         PhoneType type = 2;
     }
-    repeated PhoneNumber phones = 4;
-
+    repeated PhoneNumber phones = 6;
+    string created_at = 7;
 }

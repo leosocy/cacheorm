@@ -1,5 +1,11 @@
+import base64
+import calendar
+import datetime
 import decimal
+import json
+import time
 import uuid
+from functools import partial
 
 try:
     import shortuuid
@@ -108,10 +114,10 @@ class Field(object):
         return value
 
     def cache_value(self, value):
-        return value if value is None else self.adapt(value)
+        return self.adapt(value)
 
     def python_value(self, value):
-        return value if value is None else self.adapt(value)
+        return self.adapt(value)
 
 
 class UUIDField(Field):
@@ -123,7 +129,7 @@ class UUIDField(Field):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return value if value is None else uuid.UUID(value)
+        return uuid.UUID(value)
 
 
 class ShortUUIDField(UUIDField):
@@ -140,7 +146,7 @@ class ShortUUIDField(UUIDField):
     def python_value(self, value):
         if isinstance(value, uuid.UUID):
             return value
-        return value if value is None else shortuuid.decode(value)
+        return shortuuid.decode(value)
 
 
 class IntegerField(Field):
@@ -158,7 +164,7 @@ class EnumField(Field):
         return value
 
     def python_value(self, value):
-        return value if value is None else self.enum_class(value)
+        return self.enum_class(value)
 
 
 class FloatField(Field):
@@ -175,7 +181,7 @@ class DecimalField(FloatField):
         super(DecimalField, self).__init__(*args, **kwargs)
 
     def cache_value(self, value):
-        if value is not None and self.auto_round:
+        if self.auto_round:
             value = decimal.Decimal(str(value or 0))
             exp = decimal.Decimal(10) ** (-self.decimal_places)
             rounding = self.rounding
@@ -185,11 +191,15 @@ class DecimalField(FloatField):
     def python_value(self, value):
         if isinstance(value, decimal.Decimal):
             return value
-        return value if value is None else decimal.Decimal(str(value))
+        return decimal.Decimal(str(value))
 
 
 class BooleanField(Field):
-    adapt = bool
+    def cache_value(self, value):
+        return 1 if bool(value) else 0
+
+    def python_value(self, value):
+        return bool(value)
 
 
 class StringField(Field):
@@ -199,6 +209,197 @@ class StringField(Field):
         if isinstance(value, (bytes, bytearray)):
             return value.decode(encoding="utf-8")
         return str(value)
+
+
+class BinaryField(Field):
+    """
+    JSON/Protobuf serializer do not support binary data,
+    so when using these serializers, MUST set ensure_str=True, so that
+    the binary data is encoded into a base64 string to avoid serialization errors.
+    Otherwise, SHOULD set ensure_str=False to reduce byte size.
+    """
+
+    def __init__(self, ensure_str=True, *args, **kwargs):
+        super(BinaryField, self).__init__(*args, **kwargs)
+        self.ensure_str = ensure_str
+
+    def cache_value(self, value):
+        if isinstance(value, str):
+            value = value.encode("utf-8")
+        value = bytearray(value)
+        return base64.b64encode(value).decode("utf-8") if self.ensure_str else value
+
+    def python_value(self, value):
+        return base64.b64decode(value) if self.ensure_str else value
+
+
+def format_date_time(value, formats):
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+    raise ValueError("Cannot format date time string '%s'" % value)
+
+
+class _BaseFormattedField(Field):
+    formats = None
+
+    def __init__(self, formats=None, *args, **kwargs):
+        if formats is not None:
+            self.formats = formats
+        super(_BaseFormattedField, self).__init__(*args, **kwargs)
+
+
+class DateTimeField(_BaseFormattedField):
+    formats = ["%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats)
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class DateTimeTZField(Field):
+    formats = ["%Y-%m-%dT%H:%M:%S.%f%z"]
+
+    def cache_value(self, value):
+        if not isinstance(value, datetime.datetime):
+            raise ValueError("datetime instance required")
+        if value.tzinfo is None:
+            raise ValueError("missing timezone")
+        return value.astimezone(datetime.timezone.utc).strftime(self.formats[0])
+
+    def python_value(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats)
+        return value
+
+
+class DateField(Field):
+    formats = ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats).date()
+        elif value and isinstance(value, datetime.datetime):
+            return value.date()
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class TimeField(Field):
+    formats = [
+        "%H:%M:%S.%f",
+        "%H:%M:%S",
+        "%H:%M",
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+    ]
+
+    def adapt(self, value):
+        if value and isinstance(value, str):
+            return format_date_time(value, self.formats).time()
+        elif isinstance(value, datetime.datetime):
+            return value.time()
+        return value
+
+    def cache_value(self, value):
+        return str(self.adapt(value))
+
+
+class TimestampField(Field):
+    # second -> microsecond resolution
+    valid_resolutions = [10 ** i for i in range(7)]
+
+    def __init__(self, *args, **kwargs):
+        self.resolution = kwargs.pop("resolution", None)
+        if not self.resolution:
+            self.resolution = 1
+        elif self.resolution in range(2, 7):
+            self.resolution = 10 ** self.resolution
+        elif self.resolution not in self.valid_resolutions:
+            raise ValueError(
+                "TimestampField resolution must be one of: %s"
+                % ", ".join(map(str, self.valid_resolutions))
+            )
+        self.utc = bool(kwargs.pop("utc", False))
+        now_func = datetime.datetime.utcnow if self.utc else datetime.datetime.now
+        kwargs.setdefault("default", now_func)
+        super(TimestampField, self).__init__(*args, **kwargs)
+
+    def cache_value(self, value):
+        if isinstance(value, datetime.datetime):
+            pass
+        elif isinstance(value, datetime.date):
+            value = datetime.datetime(value.year, value.month, value.day)
+        else:
+            return int(round(value))
+        if self.utc:
+            timestamp = calendar.timegm(value.utctimetuple())
+        else:
+            timestamp = time.mktime(value.timetuple())
+        timestamp += value.microsecond * 1e-6
+        if self.resolution > 1:
+            timestamp *= self.resolution
+        return int(round(timestamp))
+
+    def python_value(self, value):
+        if self.resolution > 1:
+            value /= self.resolution
+        if self.utc:
+            return datetime.datetime.utcfromtimestamp(value)
+        return datetime.datetime.fromtimestamp(value)
+
+
+class StructField(Field):
+    def __init__(self, serializer=None, deserializer=None, *args, **kwargs):
+        super(StructField, self).__init__(*args, **kwargs)
+        if serializer is not None:
+            self.serializer = serializer
+        if deserializer is not None:
+            self.deserializer = deserializer
+
+    def cache_value(self, value):
+        if self.serializer is not None:
+            return self.serializer(value)
+        return value
+
+    def python_value(self, value):
+        if self.deserializer is not None:
+            return self.deserializer(value)
+        return value
+
+
+class JSONField(StructField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("serializer", partial(json.dumps, separators=(",", ":")))
+        kwargs.setdefault("deserializer", json.loads)
+        super(JSONField, self).__init__(*args, **kwargs)
+
+
+class ListField(JSONField):
+    def __init__(self, element_field, *args, **kwargs):
+        if not isinstance(element_field, Field):
+            raise TypeError("Element of ListField must be a subclass of Field")
+        self.element_field = element_field
+        super(ListField, self).__init__(*args, **kwargs)
+
+    def cache_value(self, values):
+        return super(ListField, self).cache_value(
+            [self.element_field.cache_value(v) for v in values]
+        )
+
+    def python_value(self, value):
+        if isinstance(value, (list, tuple)):
+            return value
+        values = super(ListField, self).python_value(value)
+        return [self.element_field.python_value(v) for v in values]
 
 
 class ForeignKeyField(Field):
