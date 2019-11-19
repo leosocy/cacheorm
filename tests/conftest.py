@@ -1,14 +1,7 @@
 import os
 
+import cacheorm as co
 import pytest
-from cacheorm.backends import MemcachedBackend, RedisBackend, SimpleBackend
-from cacheorm.fields import BooleanField, FloatField, StringField
-from cacheorm.model import Model
-from cacheorm.serializers import (
-    ProtobufSerializer,
-    SerializerRegistry,
-    register_preset_serializers,
-)
 
 
 @pytest.fixture()
@@ -51,17 +44,17 @@ def memcached_client(memcached_client_args):
 @pytest.fixture(params=("simple", "redis", "memcached"))
 def backend(redis_client, memcached_client, request):
     if request.param == "simple":
-        return SimpleBackend()
+        return co.SimpleBackend()
     elif request.param == "redis":
-        return RedisBackend(client=redis_client)
+        return co.RedisBackend(client=redis_client)
     elif request.param == "memcached":
-        return MemcachedBackend(client=memcached_client)
+        return co.MemcachedBackend(client=memcached_client)
 
 
 @pytest.fixture()
 def registry():
-    registry = SerializerRegistry()
-    register_preset_serializers()
+    registry = co.SerializerRegistry()
+    co.register_preset_serializers()
     yield registry
     registry.unregister_all()
 
@@ -75,7 +68,7 @@ def serializer(registry, request):
 def user_protobuf_serializer(registry):
     from .protos import user_pb2
 
-    registry.register("protobuf.user", ProtobufSerializer(user_pb2.User))
+    registry.register("protobuf.user", co.ProtobufSerializer(user_pb2.User))
     yield registry.get_by_name("protobuf.user")
     registry.unregister("protobuf.user")
 
@@ -85,32 +78,12 @@ def user_data():
     from .protos import user_pb2
 
     return {
+        "id": 1,
         "name": "leosocy",
-        "email": "leosocy@gmail.com",
+        "height": 179.6,
+        "gender": user_pb2.User.Gender.MALE,
         "phones": [
             {"number": "123", "type": user_pb2.User.PhoneType.HOME},
             {"number": "456", "type": user_pb2.User.PhoneType.MOBILE},
         ],
     }
-
-
-@pytest.fixture()
-def base_model(redis_client, registry):
-    class BaseModel(Model):
-        class Meta:
-            backend = RedisBackend(client=redis_client)
-            serializer = registry.get_by_name("json")
-            ttl = 10 * 60
-
-    return BaseModel
-
-
-@pytest.fixture()
-def user_model(base_model):
-    class User(base_model):
-        name = StringField(primary_key=True)
-        height = FloatField()
-        married = BooleanField(default=False)
-        email = StringField(null=True)
-
-    return User

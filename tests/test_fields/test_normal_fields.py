@@ -6,7 +6,7 @@ import uuid
 import cacheorm as co
 import pytest
 
-from .test_models import TestModel
+from .base_models import TestModel
 
 
 class IntModel(TestModel):
@@ -274,6 +274,13 @@ class StructModel(TestModel):
             self.max_value = max_value
             self.mapping = mapping
 
+        def __eq__(self, other):
+            return (
+                self.min_value == other.min_value
+                and self.max_value == other.max_value
+                and self.mapping == other.mapping
+            )
+
         def serialize(self):
             return self.min_value, self.max_value, self.mapping
 
@@ -290,9 +297,7 @@ def test_struct_filed():
     config = StructModel.Config(1, 10, {"foo": "bar"})
     sm = StructModel.create(config=config)
     sm_cache = StructModel.get_by_id(sm.id)
-    assert config.min_value == sm_cache.config.min_value
-    assert config.max_value == sm_cache.config.max_value
-    assert config.mapping == sm_cache.config.mapping
+    assert config == sm_cache.config
 
 
 class JSONModel(TestModel):
@@ -307,3 +312,32 @@ def test_json_field():
         row.info for row in JSONModel.query_many({"id": j1.id}, {"id": j2.id}).execute()
     ]
     assert [info, {}] == values
+
+
+class ListModel(TestModel):
+    configs = co.ListField(
+        co.StructField(
+            serializer=StructModel.Config.serialize,
+            deserializer=StructModel.Config.deserialize,
+        ),
+        default=[],
+    )
+
+
+def test_list_field():
+    with pytest.raises(TypeError):
+
+        class InvalidListModel(TestModel):
+            configs = co.ListField(int)
+
+    configs = [
+        StructModel.Config(0, 10, {"foo": "bar"}),
+        StructModel.Config(2, 8, {"bar": "baz"}),
+    ]
+    lm1 = ListModel.create(configs=configs)
+    lm2 = ListModel.create()
+    values = [
+        row.configs
+        for row in ListModel.query_many({"id": lm1.id}, {"id": lm2.id}).execute()
+    ]
+    assert [configs, []] == values

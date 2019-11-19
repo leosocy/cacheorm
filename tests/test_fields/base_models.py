@@ -22,3 +22,13 @@ class TestModel(co.Model):
             yield patch.start()
         finally:
             patch.stop()
+
+
+class User(TestModel):
+    username = co.StringField()
+    sub_user = co.ForeignKeyField("self", null=True, object_id_name="sub")
+
+
+class Article(TestModel):
+    author = co.ForeignKeyField(User)
+    content = co.StringField()

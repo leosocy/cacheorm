@@ -5,19 +5,17 @@ from cacheorm.fields import IntegerField, StringField
 
 
 def test_create(user_model):
-    amy = user_model.create(name="Amy", height=167.5, email="Amy@gmail.com")
+    amy = user_model.create(id=1, name="Amy", height=167.5)
     assert amy.married is False
-    sam = user_model(name="Sam", height=178.6, married=True)
+    sam = user_model(id=2, name="Sam", height=178.6, married=True)
     sam.save(force_insert=True)
     assert amy != sam
-    got_amy = user_model.get_by_id("Amy")
+    got_amy = user_model.get_by_id(1)
     assert got_amy == amy
-    assert got_amy.email == amy.email == "Amy@gmail.com"
     assert not got_amy.married
-    got_sam = user_model.get(name="Sam")
-    assert got_sam.email == sam.email is None
+    got_sam = user_model.get(id=2)
     assert got_sam.married
-    assert got_sam == user_model.get_by_id("Sam")
+    assert got_sam == user_model.get_by_id(2)
     with pytest.raises(ValueError, match=r"missing value"):
         user_model.create(name="Daming")
 
@@ -26,9 +24,9 @@ def test_create_using_parent_pk(user_model):
     class Student(user_model):
         number = StringField()
 
-    data = {"name": "Sam", "height": 178.6, "number": "190110101"}
+    data = {"id": 1, "name": "Sam", "height": 178.6, "number": "190110101"}
     sam = Student.insert(**data).execute()
-    got_sam = Student.get(name="Sam")
+    got_sam = Student.get(id=1)
     assert got_sam.name == sam.name
     assert got_sam.number == sam.number
     assert got_sam.height == sam.height
@@ -55,15 +53,15 @@ def test_create_over_determined_pk(user_model):
 
 def test_insert_many(user_model):
     rows = [
-        {"name": "Sam", "height": 178.6, "number": "190110101"},
-        user_model(name="Amy", height=167.5, married=True),
+        {"id": 1, "name": "Sam", "height": 178.6, "number": "190110101"},
+        user_model(id=2, name="Amy", height=167.5, married=True),
     ]
     with mock.patch.object(
         user_model._meta.backend, "set_many", wraps=user_model._meta.backend.set_many
     ) as mock_set_many:
         insts = user_model.insert_many(*rows).execute()
-        assert insts[0] == user_model.get_by_id("Sam")
-        assert insts[1] == user_model.get_by_id("Amy")
+        assert insts[0] == user_model.get_by_id(1)
+        assert insts[1] == user_model.get_by_id(2)
         mock_set_many.assert_called_once()
 
 
