@@ -58,10 +58,15 @@ import datetime
 import cacheorm as co
 
 class User(co.Model):
-    name = co.StringField(primary_key=True)
+    id = co.IntegerField(primary_key=True)
+    name = co.StringField()
     height = co.FloatField()
     married = co.BooleanField(default=False)
-    email = co.StringField(null=True)
+    gender = co.EnumField(Gender, default=Gender.UNKNOWN)
+    phones = co.ListField(co.StructField(PhoneNumber.se, PhoneNumber.de), default=[])
+    created_at = co.DateTimeTZField(
+        default=partial(datetime.datetime.now, tz=datetime.timezone.utc)
+    )
 
     class Meta:
         backend = co.RedisBackend()
@@ -103,8 +108,8 @@ class Collection(co.Model):
 ### Insert
 
 ```python
-sam = User.create(name="Sam", height=178.8, emial="sam@gmail.com")
-bob = User.insert(name="Bob", height=182.4, emial="Bob@gmail.com").execute()
+sam = User.create(id=1, name="Sam", height=178.8, gender=Gender.MALE)
+bob = User.insert(id=2, name="Bob", height=182.4, gender=Gender.MALE).execute()
 article = Article(author=sam, title="CacheORM", content="Create a article using cacheorm.")
 article.save(force_insert=True)
 collections = Collection.insert_many(
@@ -116,12 +121,12 @@ collections = Collection.insert_many(
 ### Query
 
 ```python
-sam = User.get(name="Sam")
-bob = User.get_by_id("Bob")
+sam = User.get(id=1)
+bob = User.get_by_id(2)
 article = Article.query(id=1).execute()
 collections = Collection.query_many(
-    {"collector": "Bob", "article_id": article.id},
-    {"collector": "Sam", "article_id": article.id},
+    {"collector_id": 1, "article_id": article.id},
+    {"collector": bob, "article_id": article.id},
 ).execute()
 ```
 
@@ -135,28 +140,28 @@ so if you want to guarantee atomicity,
 you need manager lock by yourself, such as with redlock.
 
 ```python
-sam = User.set_by_id("Sam", {"height": 178.0})
-bob = User.get_by_id("Bob")
+sam = User.set_by_id(1, {"height": 178.0})
+bob = User.get_by_id(2)
 bob.married = True
 bob.save()
 article = Article.update(
     id=1, title="What's new in CacheORM?"
 ).execute()
 collections = Collection.update_many(
-    {"collector": "Bob", "article_id": article.id, "mark": "mark"},
-    {"collector": "Sam", "article_id": article.id, "mark": "Good"},
+    {"collector_id": 1, "article_id": article.id, "mark": "mark"},
+    {"collector": bob, "article_id": article.id, "mark": "Good"},
 ).execute()
 ```
 
 ### Delete
 
 ```python
-User.delete_by_id("Bob")
-User.delete(name="Sam").execute()
+User.delete_by_id(2)
+User.delete(id=1).execute()
 article = Article.query(id=1).execute()
 Collection.delete_many(
-    {"collector": "Bob", "article_id": article.id},
-    {"collector": "Sam", "article_id": article.id},
+    {"collector_id": 1, "article_id": article.id},
+    {"collector_id": 2, "article_id": article.id},
 ).execute()
 article.delete_instance()
 ```
