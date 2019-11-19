@@ -18,17 +18,17 @@ def test_save_when_pk_exists(user_model):
 
 def test_set_by_id(user_model):
     with pytest.raises(user_model.DoesNotExist):
-        user_model.set_by_id(1, {"name": "Sam", "height": 180})
+        user_model.set_by_id(1, {"height": 180})
     user_model.create(id=1, name="Sam", height=178.6, married=True)
-    sam = user_model.set_by_id(1, {"name": "Sam", "height": 180})
+    sam = user_model.set_by_id(1, {"height": 180})
     assert 180 == user_model.get_by_id(1).height == sam.height
 
 
 def test_update(user_model):
-    sam = user_model.update(id=1, name="Sam", height=180).execute()
+    sam = user_model.update(id=1, height=180).execute()
     assert sam is None
     user_model.create(id=1, name="Sam", height=178.6, married=True)
-    sam = user_model.update(id=1, name="Sam", height=180).execute()
+    sam = user_model.update(id=1, height=180).execute()
     assert 180 == user_model.get_by_id(1).height == sam.height
     with pytest.raises(ValueError):
         user_model.update(height=180).execute()
@@ -36,14 +36,12 @@ def test_update(user_model):
 
 def test_update_many(user_model):
     sam, amy = user_model.update_many(
-        {"id": 1, "name": "Sam", "height": 180},
-        {"id": 2, "name": "Amy", "married": True},
+        {"id": 1, "height": 180}, {"id": 2, "married": True}
     ).execute()
     assert sam == amy is None
     user_model.create(id=2, name="Amy", height=167.5, email="Amy@gmail.com")
     sam, amy = user_model.update_many(
-        {"id": 1, "name": "Sam", "height": 180},
-        {"id": 2, "name": "Amy", "married": True},
+        {"id": 1, "height": 180}, {"id": 2, "married": True}
     ).execute()
     assert sam is None
     assert amy.height == 167.5
