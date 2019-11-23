@@ -213,3 +213,18 @@ def test_memcached_backend_too_long_key_length(memcached_client):
     assert memcached_backend.delete(too_long_key) is False
     assert memcached_backend.delete_many(*mapping.keys()) is False
     assert memcached_backend.has("foo") is False
+
+
+def test_benchmark_backend_set(benchmark, backend):
+    def do_set(k, v, ttl=None):
+        backend.set(k, v, ttl)
+
+    benchmark(do_set, "benchmark", "benchmark" * 100, 10 * 60)
+
+
+def test_benchmark_backend_get(benchmark, backend):
+    def do_get(k):
+        backend.get(k)
+
+    backend.set("benchmark", "benchmark")
+    benchmark(do_get, "benchmark")

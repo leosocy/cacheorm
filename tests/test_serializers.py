@@ -54,3 +54,18 @@ def test_protobuf_serializer_dumps_loads(user_protobuf_serializer, user_data):
         assert user_pb == user_pb2.User(**d)
     with pytest.raises(TypeError):
         user_protobuf_serializer.dumps(1)
+
+
+def test_benchmark_serializer_dumps(benchmark, serializer, user_data):
+    def do_dumps(d):
+        serializer.dumps(d)
+
+    benchmark(do_dumps, user_data)
+
+
+def test_benchmark_serializer_loads(benchmark, serializer, user_data):
+    def do_loads(s):
+        return serializer.loads(s)
+
+    s = serializer.dumps(user_data)
+    benchmark(do_loads, s)

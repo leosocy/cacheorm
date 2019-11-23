@@ -6,10 +6,10 @@ import uuid
 import cacheorm as co
 import pytest
 
-from .base_models import TestModel
+from .base_models import BaseModel
 
 
-class IntModel(TestModel):
+class IntModel(BaseModel):
     value = co.IntegerField()
     value_null = co.IntegerField(null=True)
 
@@ -30,7 +30,7 @@ class E(enum.Enum):
     C = 2.3
 
 
-class EnumModel(TestModel):
+class EnumModel(BaseModel):
 
     value = co.EnumField(E)
     value_null = co.EnumField(E, null=True)
@@ -46,7 +46,7 @@ def test_enum_field():
     assert [(E.A, None), (E.B, E.C)] == values
 
 
-class FloatModel(TestModel):
+class FloatModel(BaseModel):
     value = co.FloatField()
     value_null = co.FloatField(null=True)
 
@@ -61,7 +61,7 @@ def test_float_field():
     assert [(1.23, None), (4.56, 7.89)] == values
 
 
-class DecimalModel(TestModel):
+class DecimalModel(BaseModel):
     value = co.DecimalField(decimal_places=2, auto_round=True)
     value_up = co.DecimalField(
         decimal_places=2, auto_round=True, rounding=decimal.ROUND_UP, null=True
@@ -92,7 +92,7 @@ def test_decimal_field():
     assert [(decimal.Decimal("1.23"), None), (decimal.Decimal("6.79"), None)] == values
 
 
-class BoolModel(TestModel):
+class BoolModel(BaseModel):
     value = co.BooleanField(null=True)
 
 
@@ -109,7 +109,7 @@ def test_boolean_field():
     assert [True, False, None] == values
 
 
-class UUIDModel(TestModel):
+class UUIDModel(BaseModel):
     data = co.UUIDField()
     sdata = co.ShortUUIDField()
 
@@ -127,7 +127,7 @@ def test_uuid_field():
     assert uu == u_cache.sdata
 
 
-class StringModel(TestModel):
+class StringModel(BaseModel):
     s = co.StringField(default="")
     b = co.StringField(null=True)
 
@@ -142,7 +142,7 @@ def test_string_field():
     assert [("", None), ("foo", "bar")] == values
 
 
-class BinaryModel(TestModel):
+class BinaryModel(BaseModel):
     value = co.BinaryField()
     value_not_ensure = co.BinaryField(ensure_str=False, null=True)
 
@@ -166,7 +166,7 @@ def test_binary_field_msgpack():
     assert (b"\x00", b"\xff") == (bm_cache.value, bm_cache.value_not_ensure)
 
 
-class DateModel(TestModel):
+class DateModel(BaseModel):
     d = co.DateField(null=True)
     t = co.TimeField(null=True)
     dt = co.DateTimeField(null=True)
@@ -188,7 +188,7 @@ def test_date_fields():
         DateModel.create(d="2020 01 01")
 
 
-class CustomDateTimeModel(TestModel):
+class CustomDateTimeModel(BaseModel):
     dt = co.DateTimeField(formats=["%m/%d/%Y %I:%M %p", "%Y-%m-%d %H:%M:%S"])
 
 
@@ -198,7 +198,7 @@ def test_date_time_custom_format():
     assert datetime.datetime(2020, 1, 1, 10, 11, 0) == m_cache.dt
 
 
-class DTTZModel(TestModel):
+class DTTZModel(BaseModel):
     dt = co.DateTimeTZField()
 
 
@@ -224,7 +224,7 @@ def test_date_time_tz_field():
     assert m2_cache.dt.tzinfo == datetime.timezone.utc
 
 
-class TSModel(TestModel):
+class TSModel(BaseModel):
     s = co.TimestampField()
     ms = co.TimestampField(resolution=3)
     us = co.TimestampField(resolution=10 ** 6)
@@ -240,7 +240,7 @@ def test_timestamp_field():
     assert dt == ts_cache.us
 
 
-class CompositeModel(TestModel):
+class CompositeModel(BaseModel):
     first = co.StringField()
     last = co.StringField()
     data = co.StringField()
@@ -267,7 +267,7 @@ def test_composite_key():
     assert CompositeModel.get_or_none(first="e", last="f") is None
 
 
-class StructModel(TestModel):
+class StructModel(BaseModel):
     class Config(object):
         def __init__(self, min_value, max_value, mapping):
             self.min_value = min_value
@@ -300,7 +300,7 @@ def test_struct_filed():
     assert config == sm_cache.config
 
 
-class JSONModel(TestModel):
+class JSONModel(BaseModel):
     info = co.JSONField(default={})
 
 
@@ -314,7 +314,7 @@ def test_json_field():
     assert [info, {}] == values
 
 
-class ListModel(TestModel):
+class ListModel(BaseModel):
     configs = co.ListField(
         co.StructField(
             serializer=StructModel.Config.serialize,
@@ -327,7 +327,7 @@ class ListModel(TestModel):
 def test_list_field():
     with pytest.raises(TypeError):
 
-        class InvalidListModel(TestModel):
+        class InvalidListModel(BaseModel):
             configs = co.ListField(int)
 
     configs = [

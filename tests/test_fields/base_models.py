@@ -5,7 +5,7 @@ from unittest import mock
 import cacheorm as co
 
 
-class TestModel(co.Model):
+class BaseModel(co.Model):
     id = co.ShortUUIDField(primary_key=True, default=uuid.uuid4)
 
     class Meta:
@@ -24,11 +24,22 @@ class TestModel(co.Model):
             patch.stop()
 
 
-class User(TestModel):
+class User(BaseModel):
     username = co.StringField()
     sub_user = co.ForeignKeyField("self", null=True, object_id_name="sub")
 
 
-class Article(TestModel):
+class Article(BaseModel):
     author = co.ForeignKeyField(User)
     content = co.StringField()
+
+
+class Collection(BaseModel):
+    collector = co.ForeignKeyField(User)
+    article = co.ForeignKeyField(Article)
+    mark = co.StringField(default="")
+
+    class Meta:
+        primary_key = co.CompositeKey(
+            "collector", "article", index_formatter="collection.%s.%s"
+        )

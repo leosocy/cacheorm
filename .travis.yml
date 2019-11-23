@@ -4,20 +4,19 @@ cache: pip
 services:
   - redis-server
   - memcached
-matrix:
-  include:
-    - python: 3.6
-    - python: 3.7
-install:
-  - pip install -e ".[dev]"
-
 stages:
   - test
   - benchmark
+install:
+  - pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
 jobs:
   include:
     - stage: test
       name: test
+      python:
+        - 3.6
+        - 3.7
+        - 3.8
       script:
         - flake8 src tests
         - pytest --benchmark-skip
@@ -26,7 +25,12 @@ jobs:
     - stage: benchmark
       name: benchmark
       script:
-        - pytest --benchmark-only --no-cov --benchmark-min-rounds=20 --benchmark-calibration-precision=50 --benchmark-disable-gc
+        - >
+        pytest --benchmark-only --no-cov
+        --benchmark-min-time=0.2 --benchmark-max-time=0.5
+        --benchmark-min-rounds=20 --benchmark-calibration-precision=50
+        --benchmark-disable-gc
+        --benchmark-columns=min,max,mean,ops,rounds,iterations
 deploy:
   provider: pypi
   distributions: "sdist bdist_wheel"
