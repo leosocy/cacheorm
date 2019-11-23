@@ -14,8 +14,8 @@ class BaseSerializer(object):  # pragma: no cover
 
 
 class SerializerRegistry(metaclass=Singleton):
-    def __init__(self):
-        self._serializers = {}
+    def __init__(self, serializers=None):
+        self._serializers = serializers or {}
         self._lock = threading.Lock()
 
     def register(self, unique_name, serializer: BaseSerializer):
@@ -120,10 +120,10 @@ class ProtobufSerializer(BaseSerializer):
         return self._descriptor.FromString(s)
 
 
-registry = SerializerRegistry()
-
-
-def register_preset_serializers():
-    registry.register("json", JSONSerializer())
-    registry.register("msgpack", MessagePackSerializer())
-    registry.register("pickle", PickleSerializer())
+registry = SerializerRegistry(
+    serializers={
+        "json": JSONSerializer(),
+        "msgpack": MessagePackSerializer(),
+        "pickle": PickleSerializer(),
+    }
+)

@@ -15,6 +15,8 @@ def test_registry_register_unregister(registry):
     # repeat unregister
     with pytest.raises(KeyError):
         registry.unregister("json")
+    # recover
+    registry.register("json", JSONSerializer())
 
 
 def test_normal_serializers_dumps_loads(serializer, user_data):

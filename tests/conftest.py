@@ -53,10 +53,7 @@ def backend(redis_client, memcached_client, request):
 
 @pytest.fixture()
 def registry():
-    registry = co.SerializerRegistry()
-    co.register_preset_serializers()
-    yield registry
-    registry.unregister_all()
+    yield co.registry
 
 
 @pytest.fixture(params=("json", "msgpack", "pickle"))

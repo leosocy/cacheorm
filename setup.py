@@ -56,6 +56,7 @@ setuptools.setup(
             "msgpack<1.0",
             "protobuf>=3.9",
         ],
+        "bench": ["pytest-benchmark"],
         "backends": ["redis>=3.0", "pylibmc"],
         "serializers": ["msgpack>=0.6,<1.0", "protobuf>=3.9"],
     },
