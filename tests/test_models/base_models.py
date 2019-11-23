@@ -23,18 +23,17 @@ class PhoneNumber(object):
         self.phone_type = phone_type
 
     def se(self):
-        return "%s,%s" % (self.number, self.phone_type)
+        return {"number": self.number, "type": self.phone_type.value}
 
     @classmethod
     def de(cls, s):
-        elements = s.split(",")
-        return cls(str(elements[0]), PhoneType(int(elements[1])))
+        return cls(str(s["number"]), PhoneType(int(s["type"])))
 
 
 class User(co.Model):
     id = co.IntegerField(primary_key=True)
     name = co.StringField()
-    height = co.FloatField()
+    height = co.DecimalField(auto_round=True)
     married = co.BooleanField(default=False)
     gender = co.EnumField(Gender, default=Gender.UNKNOWN)
     phones = co.ListField(co.StructField(PhoneNumber.se, PhoneNumber.de), default=[])

@@ -56,11 +56,6 @@ def registry():
     yield co.registry
 
 
-@pytest.fixture(params=("json", "msgpack", "pickle"))
-def serializer(registry, request):
-    return registry.get_by_name(request.param)
-
-
 @pytest.fixture()
 def user_protobuf_serializer(registry):
     from .protos import user_pb2
@@ -68,6 +63,11 @@ def user_protobuf_serializer(registry):
     registry.register("protobuf.user", co.ProtobufSerializer(user_pb2.User))
     yield registry.get_by_name("protobuf.user")
     registry.unregister("protobuf.user")
+
+
+@pytest.fixture(params=("json", "msgpack", "pickle", "protobuf.user"))
+def serializer(registry, user_protobuf_serializer, request):
+    return registry.get_by_name(request.param)
 
 
 @pytest.fixture()

@@ -383,7 +383,7 @@ class JSONField(StructField):
         super(JSONField, self).__init__(*args, **kwargs)
 
 
-class ListField(JSONField):
+class ListField(Field):
     def __init__(self, element_field, *args, **kwargs):
         if not isinstance(element_field, Field):
             raise TypeError("Element of ListField must be a subclass of Field")
@@ -391,15 +391,10 @@ class ListField(JSONField):
         super(ListField, self).__init__(*args, **kwargs)
 
     def cache_value(self, values):
-        return super(ListField, self).cache_value(
-            [self.element_field.cache_value(v) for v in values]
-        )
+        return [self.element_field.cache_value(v) for v in values]
 
     def python_value(self, value):
-        if isinstance(value, (list, tuple)):
-            return value
-        values = super(ListField, self).python_value(value)
-        return [self.element_field.python_value(v) for v in values]
+        return [self.element_field.python_value(v) for v in value]
 
 
 class ForeignKeyField(Field):

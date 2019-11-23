@@ -414,6 +414,8 @@ class CacheBuilder(object):
     def load_payload(self, s, on_conflict_update=True):
         payload = self.model._meta.serializer.loads(s)
         for name, field in self.model._meta.fields.items():
+            if name in self._index.field_names:
+                continue
             if name in payload:
                 if self._instance.__data__.get(name) is None or on_conflict_update:
                     setattr(self._instance, name, field.python_value(payload[name]))

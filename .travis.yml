@@ -10,11 +10,23 @@ matrix:
     - python: 3.7
 install:
   - pip install -e ".[dev]"
-script:
-  - flake8 src tests
-  - pytest
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
+
+stages:
+  - test
+  - benchmark
+jobs:
+  include:
+    - stage: test
+      name: test
+      script:
+        - flake8 src tests
+        - pytest --benchmark-skip
+      after_success:
+        - bash <(curl -s https://codecov.io/bash)
+    - stage: benchmark
+      name: benchmark
+      script:
+        - pytest --benchmark-only --no-cov --benchmark-min-rounds=20 --benchmark-calibration-precision=50 --benchmark-disable-gc
 deploy:
   provider: pypi
   distributions: "sdist bdist_wheel"
