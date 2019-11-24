@@ -1,27 +1,25 @@
-sudo: false
 language: python
+os: linux
 cache: pip
 services:
-  - redis-server
+  - redis
   - memcached
-stages:
-  - test
-  - benchmark
 python:
   - "3.6"
   - "3.7"
   - "3.8"
+stages:
+  - test
+  - benchmark
 install:
   - pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
+script:
+  - flake8 src tests
+  - pytest --benchmark-skip
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
 jobs:
   include:
-    - stage: test
-      name: test
-      script:
-        - flake8 src tests
-        - pytest --benchmark-skip
-      after_success:
-        - bash <(curl -s https://codecov.io/bash)
     - stage: benchmark
       name: benchmark
       script:
@@ -34,7 +32,7 @@ jobs:
 deploy:
   provider: pypi
   distributions: "sdist bdist_wheel"
-  user: ${DEPLOY_PYPI_USER}
+  username: ${DEPLOY_PYPI_USER}
   password: ${DEPLOY_PYPI_PASSWORD}
   on:
     tags: true

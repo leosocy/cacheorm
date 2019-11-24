@@ -77,7 +77,6 @@ def user_data():
     return {
         "id": 1,
         "name": "leosocy",
-        "height": 179.6,
         "gender": user_pb2.User.Gender.MALE,
         "phones": [
             {"number": "123", "type": user_pb2.User.PhoneType.HOME},
