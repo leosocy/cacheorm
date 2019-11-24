@@ -219,12 +219,59 @@ def test_benchmark_backend_set(benchmark, backend):
     def do_set(k, v, ttl=None):
         backend.set(k, v, ttl)
 
-    benchmark(do_set, "benchmark", "benchmark" * 100, 10 * 60)
+    benchmark(do_set, "foo", "bar" * 100, 10 * 60)
+
+
+def test_benchmark_backend_set_many(benchmark, backend):
+    def do_set_many(mapping, ttl=None):
+        backend.set_many(mapping, ttl)
+
+    benchmark(do_set_many, {"foo": "bar", "bar": "baz"}, 10 * 60)
 
 
 def test_benchmark_backend_get(benchmark, backend):
     def do_get(k):
         backend.get(k)
 
-    backend.set("benchmark", "benchmark")
-    benchmark(do_get, "benchmark")
+    backend.set("foo", "bar")
+    benchmark(do_get, "foo")
+
+
+def test_benchmark_backend_get_many(benchmark, backend):
+    def do_get_many(*keys):
+        backend.get_many(*keys)
+
+    backend.set_many({"foo": "bar", "bar": "baz"}, 10 * 60)
+    benchmark(do_get_many, "foo", "bar")
+
+
+def test_benchmark_backend_replace(benchmark, backend):
+    def do_replace(k, v, ttl=None):
+        backend.replace(k, v, ttl)
+
+    backend.set("foo", "bar")
+    benchmark(do_replace, "foo", "new_bar", 10 * 60)
+
+
+def test_benchmark_backend_replace_many(benchmark, backend):
+    def do_replace_many(mapping, ttl=None):
+        backend.replace_many(mapping, ttl)
+
+    backend.set_many({"foo": "bar", "bar": "baz"}, 10 * 60)
+    benchmark(do_replace_many, {"foo": "new_bar", "bar": "new_baz"}, 10 * 60)
+
+
+def test_benchmark_backend_delete(benchmark, backend):
+    def do_delete(k):
+        backend.delete(k)
+
+    backend.set("foo", "bar")
+    benchmark(do_delete, "foo")
+
+
+def test_benchmark_backend_delete_many(benchmark, backend):
+    def do_delete_many(*keys):
+        backend.delete_many(*keys)
+
+    backend.set_many({"foo": "bar", "bar": "baz"}, 10 * 60)
+    benchmark(do_delete_many, "foo", "bar")
