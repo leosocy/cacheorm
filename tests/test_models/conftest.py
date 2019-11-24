@@ -5,11 +5,11 @@ from .base_models import Gender, PhoneNumber, PhoneType, User
 
 
 @pytest.fixture()
-def user_model(redis_client, registry):
+def user_model(registry, redis_client):
     class TestUser(User):
         class Meta:
+            serializer = registry.get_by_name("msgpack")
             backend = co.RedisBackend(client=redis_client)
-            serializer = registry.get_by_name("json")
             ttl = 10 * 60
 
     return TestUser

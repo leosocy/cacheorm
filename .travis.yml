@@ -7,17 +7,16 @@ services:
 stages:
   - test
   - benchmark
-  - deploy
+python:
+  - "3.6"
+  - "3.7"
+  - "3.8"
 install:
   - pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
 jobs:
   include:
     - stage: test
       name: test
-      python:
-        - "3.6"
-        - "3.7"
-        - "3.8"
       script:
         - flake8 src tests
         - pytest --benchmark-skip
@@ -27,17 +26,16 @@ jobs:
       name: benchmark
       script:
         - >
-        pytest --benchmark-only --no-cov
-        --benchmark-min-time=0.2 --benchmark-max-time=0.5
-        --benchmark-min-rounds=20 --benchmark-calibration-precision=50
-        --benchmark-disable-gc
-        --benchmark-columns=min,max,mean,ops,rounds,iterations
-    - stage: deploy
-      name: deploy to pypi
-      provider: pypi
-      distributions: "sdist bdist_wheel"
-      user: ${DEPLOY_PYPI_USER}
-      password: ${DEPLOY_PYPI_PASSWORD}
-      on:
-        tags: true
-        branch: master
+          pytest --benchmark-only --no-cov
+          --benchmark-min-time=0.2 --benchmark-max-time=0.5
+          --benchmark-min-rounds=20 --benchmark-calibration-precision=50
+          --benchmark-disable-gc --benchmark-group-by=func
+          --benchmark-columns=min,max,mean,ops,rounds,iterations
+deploy:
+  provider: pypi
+  distributions: "sdist bdist_wheel"
+  user: ${DEPLOY_PYPI_USER}
+  password: ${DEPLOY_PYPI_PASSWORD}
+  on:
+    tags: true
+    branch: master

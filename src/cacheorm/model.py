@@ -442,8 +442,19 @@ class Insert(object):
             builders.append(builder)
             meta = model._meta
             group_by_meta[(meta.backend, meta.ttl)].append(builder)
+        if len(group_by_meta) == 1:
+            backend, ttl = list(group_by_meta.keys())[0]
+            builder = list(group_by_meta.values())[0][0]
+            backend.set(builder.build_key(), builder.build_payload(), ttl=ttl)
         for (backend, ttl), bs in group_by_meta.items():
-            backend.set_many({b.build_key(): b.build_payload() for b in bs}, ttl=ttl)
+            if len(bs) == 1:
+                # faster way when only one key/value to set
+                b = bs[0]
+                backend.set(b.build_key(), b.build_payload(), ttl=ttl)
+            else:
+                backend.set_many(
+                    {b.build_key(): b.build_payload() for b in bs}, ttl=ttl
+                )
         return [builder.get_instance() for builder in builders]
 
 
@@ -506,7 +517,10 @@ class Update(object):
             for b in bs:
                 if b.get_instance() is not None:
                     mapping[b.build_key()] = b.build_payload()
-            backend.set_many(mapping, ttl=ttl)
+            if len(mapping) == 1:
+                backend.set(*mapping.popitem(), ttl=ttl)
+            elif len(mapping) > 1:
+                backend.set_many(mapping, ttl=ttl)
         return [builder.get_instance() for builder in builders]
 
 
