@@ -14,8 +14,8 @@ class BaseSerializer(object):  # pragma: no cover
 
 
 class SerializerRegistry(metaclass=Singleton):
-    def __init__(self):
-        self._serializers = {}
+    def __init__(self, serializers=None):
+        self._serializers = serializers or {}
         self._lock = threading.Lock()
 
     def register(self, unique_name, serializer: BaseSerializer):
@@ -104,26 +104,43 @@ class PickleSerializer(BaseSerializer):
 
 
 class ProtobufSerializer(BaseSerializer):
-    def __init__(self, descriptor):
+    def __init__(self, descriptor, dumper=None, loader=None):
         self._descriptor = descriptor
+        self.dumper = dumper or self._default_dumper
+        self.loader = loader or self._default_loader
+
+    def _default_dumper(self, obj):
+        return self._descriptor.SerializeToString(obj)
+
+    def _default_loader(self, s):
+        try:
+            from google.protobuf import json_format
+        except ImportError:  # pragma: no cover
+            raise ModuleNotFoundError("no google.protobuf module found")
+        return json_format.MessageToDict(
+            self._descriptor.FromString(s),
+            including_default_value_fields=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=True,
+        )
 
     def dumps(self, obj):
         if isinstance(obj, dict):
             obj = self._descriptor(**obj)
-        if isinstance(obj, self._descriptor):
-            return self._descriptor.SerializeToString(obj)
-        raise TypeError(
-            "protocol buffer serializer `dumps` only support Dict/Pb object"
-        )
+        if not isinstance(obj, self._descriptor):
+            raise TypeError(
+                "protocol buffer serializer `dumps` only support Dict/Pb object"
+            )
+        return self.dumper(obj)
 
     def loads(self, s):
-        return self._descriptor.FromString(s)
+        return self.loader(s)
 
 
-registry = SerializerRegistry()
-
-
-def register_preset_serializers():
-    registry.register("json", JSONSerializer())
-    registry.register("msgpack", MessagePackSerializer())
-    registry.register("pickle", PickleSerializer())
+registry = SerializerRegistry(
+    serializers={
+        "json": JSONSerializer(),
+        "msgpack": MessagePackSerializer(),
+        "pickle": PickleSerializer(),
+    }
+)

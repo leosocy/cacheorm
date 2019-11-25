@@ -29,7 +29,6 @@ def test_create_using_parent_pk(user_model):
     got_sam = Student.get(id=1)
     assert got_sam.name == sam.name
     assert got_sam.number == sam.number
-    assert got_sam.height == sam.height
     assert got_sam.married is not None and not got_sam.married
 
 
@@ -53,7 +52,7 @@ def test_create_over_determined_pk(user_model):
 
 def test_insert_many(user_model):
     rows = [
-        {"id": 1, "name": "Sam", "height": 178.6, "number": "190110101"},
+        {"id": 1, "name": "Sam", "height": 178.6},
         user_model(id=2, name="Amy", height=167.5, married=True),
     ]
     with mock.patch.object(

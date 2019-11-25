@@ -53,15 +53,7 @@ def backend(redis_client, memcached_client, request):
 
 @pytest.fixture()
 def registry():
-    registry = co.SerializerRegistry()
-    co.register_preset_serializers()
-    yield registry
-    registry.unregister_all()
-
-
-@pytest.fixture(params=("json", "msgpack", "pickle"))
-def serializer(registry, request):
-    return registry.get_by_name(request.param)
+    yield co.registry
 
 
 @pytest.fixture()
@@ -73,6 +65,11 @@ def user_protobuf_serializer(registry):
     registry.unregister("protobuf.user")
 
 
+@pytest.fixture(params=("json", "msgpack", "pickle", "protobuf.user"))
+def serializer(registry, user_protobuf_serializer, request):
+    return registry.get_by_name(request.param)
+
+
 @pytest.fixture()
 def user_data():
     from .protos import user_pb2
@@ -80,7 +77,6 @@ def user_data():
     return {
         "id": 1,
         "name": "leosocy",
-        "height": 179.6,
         "gender": user_pb2.User.Gender.MALE,
         "phones": [
             {"number": "123", "type": user_pb2.User.PhoneType.HOME},

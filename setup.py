@@ -39,6 +39,7 @@ setuptools.setup(
         "dev": [
             "pytest",
             "pytest-cov",
+            "pytest-benchmark",
             "mock",
             "coverage",
             # flake8 extensions

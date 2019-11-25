@@ -1,0 +1,64 @@
+name: benchmark
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+
+jobs:
+  benchmark:
+    name: Run benchmark
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.7]
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      memcached:
+        image: memcached
+        ports:
+          - 11211:11211
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cache/pip
+          key: ${{ matrix.os }}-${{ matrix.python-version }}-pip-${{ hashFiles('setup.py') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
+      - name: Run benchmark
+        run: >
+          pytest --benchmark-only --no-cov
+          --benchmark-min-time=0.2 --benchmark-max-time=0.5
+          --benchmark-min-rounds=20 --benchmark-calibration-precision=50
+          --benchmark-disable-gc --benchmark-group-by=func
+          --benchmark-columns=min,max,mean,ops,rounds,iterations
+          --benchmark-json benchmark-output.json
+      - name: Store benchmark result
+        uses: rhysd/github-action-benchmark@v1
+        with:
+          name: Python Benchmark with pytest-benchmark
+          tool: 'pytest'
+          output-file-path: benchmark-output.json
+          gh-pages-branch: master
+          benchmark-data-dir-path: docs/benchmark
+          github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: true
+          fail-on-alert: true

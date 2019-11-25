@@ -1,7 +1,7 @@
 import cacheorm as co
 import pytest
 
-from .base_models import Article, TestModel, User
+from .base_models import Article, BaseModel, Collection, User
 
 
 def test_create():
@@ -53,7 +53,7 @@ def test_query():
 def test_specify_object_id_name():
     with pytest.raises(ValueError):
 
-        class T(TestModel):
+        class T(BaseModel):
             user = co.ForeignKeyField(User, object_id_name="user")
 
     sam1 = User.create(username="sam1")
@@ -61,17 +61,6 @@ def test_specify_object_id_name():
     sam1_cache = User.get_by_id(sam1.id)
     assert sam1_cache.id == sam2.sub
     assert sam1.username == sam2.sub_user.username
-
-
-class Collection(TestModel):
-    collector = co.ForeignKeyField(User)
-    article = co.ForeignKeyField(Article)
-    mark = co.StringField(default="")
-
-    class Meta:
-        primary_key = co.CompositeKey(
-            "collector", "article", index_formatter="collection.%s.%s"
-        )
 
 
 def test_composite_key_contain_foreign_key_fields():
