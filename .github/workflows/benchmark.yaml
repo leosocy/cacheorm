@@ -2,10 +2,8 @@ name: benchmark
 
 on:
   push:
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-  pull_request:
+    branches:
+      - master
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -62,3 +60,5 @@ jobs:
           benchmark-data-dir-path: docs/benchmark
           github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
           auto-push: true
+          comment-on-alert: true
+          fail-on-alert: true
