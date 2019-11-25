@@ -1,8 +1,8 @@
 # A cache-based python ORM -- supports Redis/Memcached/InMemory/FileSystem backends, and JSON/Msgpack/Pickle/Protobuf serializers.
 
-[![Build Status](https://github.com/Leosocy/cacheorm/workflows/.github/workflows/test.yaml/badge.svg)](https://github.com/Leosocy/cacheorm/actions)
+[![Build Status](https://github.com/Leosocy/cacheorm/workflows/test/badge.svg)](https://github.com/Leosocy/cacheorm/actions)
 [![codecov](https://codecov.io/gh/Leosocy/cacheorm/branch/master/graph/badge.svg)](https://codecov.io/gh/Leosocy/cacheorm)
-[![Benchmark Result](https://github.com/Leosocy/cacheorm/workflows/.github/workflows/benchmark.yaml/badge.svg)](https://leosocy.github.io/cacheorm/benchmark)
+[![Benchmark Result](https://github.com/Leosocy/cacheorm/workflows/benchmark/badge.svg)](https://leosocy.github.io/cacheorm/benchmark)
 [![PyPI](https://img.shields.io/pypi/v/cacheorm)](https://pypi.org/project/cacheorm/)
 [![PyPI - License](https://img.shields.io/pypi/l/cacheorm)](https://github.com/Leosocy/cacheorm/blob/master/README.md)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/cacheorm)
