@@ -13,7 +13,12 @@ on:
 jobs:
   benchmark:
     name: Run benchmark
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.7]
     services:
       redis:
         image: redis
@@ -25,11 +30,18 @@ jobs:
           - 11211:11211
     steps:
       - uses: actions/checkout@v1
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v1
+        with:
+          path: ~/.cache/pip
+          key: ${{ matrix.os }}-${{ matrix.python-version }}-pip-${{ hashFiles('setup.py') }}
+          restore-keys: |
+            ${{ matrix.os }}-${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          sudo apt-get install libmemcached-dev
           python -m pip install --upgrade pip
           pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
       - name: Run benchmark
@@ -46,3 +58,7 @@ jobs:
           name: Python Benchmark with pytest-benchmark
           tool: 'pytest'
           output-file-path: benchmark-output.json
+          gh-pages-branch: master
+          benchmark-data-dir-path: docs/benchmark
+          github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          auto-push: true
