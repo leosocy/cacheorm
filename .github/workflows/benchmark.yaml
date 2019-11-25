@@ -1,0 +1,48 @@
+name: benchmark
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+
+jobs:
+  benchmark:
+    name: Run benchmark
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      memcached:
+        image: memcached
+        ports:
+          - 11211:11211
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+      - name: Install dependencies
+        run: |
+          sudo apt-get install libmemcached-dev
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" -i https://mirrors.aliyun.com/pypi/simple
+      - name: Run benchmark
+        run: >
+          pytest --benchmark-only --no-cov
+          --benchmark-min-time=0.2 --benchmark-max-time=0.5
+          --benchmark-min-rounds=20 --benchmark-calibration-precision=50
+          --benchmark-disable-gc --benchmark-group-by=func
+          --benchmark-columns=min,max,mean,ops,rounds,iterations
+          --benchmark-json benchmark-output.json
+      - name: Store benchmark result
+        uses: rhysd/github-action-benchmark@v1
+        with:
+          name: Python Benchmark with pytest-benchmark
+          tool: 'pytest'
+          output-file-path: benchmark-output.json
