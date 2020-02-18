@@ -58,6 +58,6 @@ setuptools.setup(
             "protobuf>=3.9",
         ],
         "backends": ["redis>=3.0", "pylibmc"],
-        "serializers": ["msgpack>=0.6,<1.0", "protobuf>=3.9"],
+        "serializers": ["msgpack>=0.6,<2.0", "protobuf>=3.9"],
     },
 )
